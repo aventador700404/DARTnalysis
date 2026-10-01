@@ -1,0 +1,219 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   디자인 토큰 — 색은 전부 여기서만 정의하고, 화면에서는 역할 이름으로 씀.
+   라이트가 기본 (레퍼런스: FACT CHART), 다크는 같은 역할의 별도 단계.
+   차트 공시 마커 색 5개: 위·아래 줄별로 색약·정상 시각 구분을 검증한 조합 (lib/categories.ts 참고).
+   상승=빨강 / 하락=파랑 (한국 증시 관례).
+   ───────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+  --page: #f4f6f5;
+  --surface: #ffffff;
+  --surface-2: #f0f3f1;
+  --surface-3: #e7ebe9;
+  --border: rgba(16, 22, 19, 0.09);
+  --border-strong: rgba(16, 22, 19, 0.16);
+  --ink: #101413;
+  --ink-2: #4b524e;
+  --ink-3: #6b726e;
+  --grid: #e8ecea;
+  --axis: #c9cfcc;
+
+  --brand: #18a06b;
+  --brand-ink: #0b7a4e;
+  --brand-soft: #e5f5ed;
+
+  --up: #d0303a;
+  --down: #1f63d1;
+  --up-soft: #fdeced;
+  --down-soft: #e9f0fc;
+  --flat: #6b726e;
+
+  --cat-earnings: #2a78d6;
+  --cat-financing: #eb6834;
+  --cat-buyback: #1baf7a;
+  --cat-ownership: #eda100;
+  --cat-other: #6b726e;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --bench-1: #8d9490;
+  --bench-2: #c2c8c5;
+
+  --warn: #fab219;
+  --critical: #d03b3b;
+
+  --shadow: 0 1px 2px rgba(16, 22, 19, 0.04), 0 4px 16px rgba(16, 22, 19, 0.05);
+  --radius: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0b0d0c;
+    --surface: #141716;
+    --surface-2: #1b1f1d;
+    --surface-3: #242927;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.15);
+    --ink: #f2f4f3;
+    --ink-2: #c3c8c5;
+    --ink-3: #959c98;
+    --grid: #232826;
+    --axis: #3a403d;
+    --brand: #2fbf84;
+    --brand-ink: #52d49d;
+    --brand-soft: #11261c;
+    --up: #ff5c63;
+    --down: #5c9bff;
+    --up-soft: #2b1416;
+    --down-soft: #121c31;
+    --flat: #959c98;
+    --cat-earnings: #3987e5;
+    --cat-financing: #d95926;
+    --cat-buyback: #199e70;
+    --cat-ownership: #c98500;
+    --cat-other: #b8bdba;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --bench-1: #7d8480;
+    --bench-2: #4a514d;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0b0d0c;
+  --surface: #141716;
+  --surface-2: #1b1f1d;
+  --surface-3: #242927;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --ink: #f2f4f3;
+  --ink-2: #c3c8c5;
+  --ink-3: #959c98;
+  --grid: #232826;
+  --axis: #3a403d;
+  --brand: #2fbf84;
+  --brand-ink: #52d49d;
+  --brand-soft: #11261c;
+  --up: #ff5c63;
+  --down: #5c9bff;
+  --up-soft: #2b1416;
+  --down-soft: #121c31;
+  --flat: #959c98;
+  --cat-earnings: #3987e5;
+  --cat-financing: #d95926;
+  --cat-buyback: #199e70;
+  --cat-ownership: #c98500;
+  --cat-other: #b8bdba;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --bench-1: #7d8480;
+  --bench-2: #4a514d;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-up-soft: var(--up-soft);
+  --color-down-soft: var(--down-soft);
+  --font-sans: var(--font-pretendard), system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+
+html {
+  background: var(--page);
+}
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-pretendard), system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-feature-settings: "ss06";
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+/* 새 공시가 들어올 때 */
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    background: var(--brand-soft);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-slide-in {
+  animation: slide-in 600ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--brand) 55%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+.live-dot {
+  animation: live-pulse 2s ease-out infinite;
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-up {
+  animation: fade-up 280ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-in,
+  .animate-fade-up,
+  .live-dot {
+    animation: none;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* 스크롤바 얇게 */
+.thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}

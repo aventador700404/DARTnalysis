@@ -1,0 +1,4 @@
+# supabase CLI 설정 (필요한 부분만)
+# poll-disclosures는 Supabase Cron이 x-cron-secret 헤더로 호출하므로 JWT 검사를 끈다.
+[functions.poll-disclosures]
+verify_jwt = false

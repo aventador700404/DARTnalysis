@@ -1,0 +1,29 @@
+# 환경변수 (API 키) — 절대 커밋하지 않기
+.env
+.env.*
+!.env.example
+web/.env*.local
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+pipeline/.cache/
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+*.tsbuildinfo
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

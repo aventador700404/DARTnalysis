@@ -1,0 +1,75 @@
+# 매일 장 마감 후: 주가·재무 갱신 + 공시 후 수익률·건강검진 재계산
+# 저장소 Settings > Secrets and variables > Actions 에 아래 값을 등록해야 실행됩니다.
+#   DART_API_KEY, DATAGOKR_SERVICE_KEY, SUPABASE_DB_URL, (선택) NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
+name: daily-batch
+
+on:
+  schedule:
+    - cron: "17 11 * * 1-5" # UTC 11:17 = KST 20:17, 평일
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "daily 또는 backfill"
+        default: daily
+        type: choice
+        options: [daily, backfill]
+      years:
+        description: "backfill 기간(년)"
+        default: "5"
+
+concurrency:
+  group: daily-batch
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      DART_API_KEY: ${{ secrets.DART_API_KEY }}
+      DATAGOKR_SERVICE_KEY: ${{ secrets.DATAGOKR_SERVICE_KEY }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+      NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+    steps:
+      - name: 비밀값 확인
+        id: check
+        run: |
+          if [ -z "$DART_API_KEY" ] || [ -z "$DATAGOKR_SERVICE_KEY" ] || [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::notice::API 키·DB 연결 문자열이 아직 등록되지 않아 건너뜁니다 (README 4장 참고)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.ready == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.ready == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: DART 응답 캐시 (지난 재무 데이터 재호출 방지)
+        if: steps.check.outputs.ready == 'true'
+        uses: actions/cache@v4
+        with:
+          path: pipeline/.cache
+          key: dart-cache-${{ github.run_id }}
+          restore-keys: dart-cache-
+
+      - name: 의존성 설치
+        if: steps.check.outputs.ready == 'true'
+        run: pip install -r pipeline/requirements.txt
+
+      - name: 실행
+        if: steps.check.outputs.ready == 'true'
+        working-directory: pipeline
+        run: |
+          if [ "${{ inputs.job }}" = "backfill" ]; then
+            python -m dartpipe.jobs.backfill --years "${{ inputs.years || '5' }}"
+          else
+            python -m dartpipe.jobs.daily
+          fi
