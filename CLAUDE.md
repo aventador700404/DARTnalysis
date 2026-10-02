@@ -89,6 +89,7 @@ python -m dartpipe.jobs.backfill --years 1 --limit 20   # 시험 백필 (SUPABAS
 - ⏸ 네이버 뉴스: 키 미등록, 당분간 제외하고 진행.
 - Claude Code 클라우드 세션: 환경 설정 Network access=Custom에 `opendart.fss.or.kr`, `apis.data.go.kr`, `openapi.naver.com` 허용 + 키는 환경 변수(`.env` 대신)로 넣음.
 - ⚠️ **클라우드 세션에서는 Supabase Postgres(5432/6543) 직접 연결 불가** (HTTPS 프록시만 통과). 백필·일일 배치는 GitHub Actions `daily-batch` 수동 실행(job=backfill, years, limit)으로 돌림.
+- ✅ **Supabase 프로젝트 `dartnalysis` (ref `ojmfbdyxxzryuyehblvt`, 서울 ap-northeast-2)** 생성·migrations 0001~0003 적용 (2026-10-02, Supabase 커넥터). 시험용 빈 테이블 `_probe`가 RLS 잠금 상태로 남아 있음 — 대시보드에서 삭제 가능. DB 비밀번호·`SUPABASE_DB_URL`은 사용자만 보관.
 - ⚠️ `web/lib/data/supabase.ts`와 Edge Function은 실제 Supabase에 붙여 테스트한 적 없음.
 
 ## 다음 할 일 (로드맵)

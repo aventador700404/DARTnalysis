@@ -79,7 +79,7 @@ create table if not exists public.disclosures (
   report_nm      text not null,
   rcept_dt       date not null,
   first_seen_at  timestamptz default now(),  -- 실시간 수집이 처음 발견한 시각 (기준일 판단에 사용)
-  category       text not null,     -- 마커 유형 6종
+  category       text not null,     -- 마커 유형 5종
   subtype        text,              -- 세부 유형 (재무 영향 계산용)
   group_key      text not null,     -- 유형별 통계 묶음 키
   is_correction  boolean not null default false,
@@ -186,8 +186,10 @@ begin
                            'disclosure_impacts','disclosure_stats','scores','valuation','valuation_history','news']
   loop
     execute format('alter table public.%I enable row level security', t);
-    execute format('drop policy if exists "public read" on public.%I', t);
-    execute format('create policy "public read" on public.%I for select to anon, authenticated using (true)', t);
+    -- drop 없이 '없을 때만 생성' → 다시 실행해도 안전하고 삭제 확인이 필요 없음
+    if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = t and policyname = 'public read') then
+      execute format('create policy "public read" on public.%I for select to anon, authenticated using (true)', t);
+    end if;
   end loop;
   -- api_usage는 공개하지 않음 (RLS만 켜고 정책 없음 → anon 접근 불가)
   execute 'alter table public.api_usage enable row level security';
