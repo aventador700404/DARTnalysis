@@ -64,7 +64,7 @@ def main() -> None:
     s = get_settings()
     usage = UsageMeter(budgets={"dart": s.dart_daily_budget})
     dart = DartClient(require(s.dart_api_key, "DART_API_KEY"), usage=usage, cache_dir=REPO_ROOT / "pipeline" / ".cache" / "dart")
-    gokr = DataGoKrClient(require(s.datagokr_service_key, "DATAGOKR_SERVICE_KEY"), usage=usage)
+    gokr = DataGoKrClient(s.datagokr_service_key, usage=usage, relay_url=s.datagokr_relay_url, relay_secret=s.datagokr_relay_secret)
     naver = NaverClient(s.naver_client_id, s.naver_client_secret, usage=usage) if s.naver_client_id and s.naver_client_secret else None
     store = PgStore(require(s.supabase_db_url, "SUPABASE_DB_URL"))
     as_of = common.today_kst()

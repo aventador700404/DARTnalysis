@@ -16,6 +16,8 @@ load_dotenv(REPO_ROOT / ".env")
 class Settings:
     dart_api_key: str | None
     datagokr_service_key: str | None
+    datagokr_relay_url: str | None
+    datagokr_relay_secret: str | None
     naver_client_id: str | None
     naver_client_secret: str | None
     supabase_db_url: str | None
@@ -26,6 +28,9 @@ def get_settings() -> Settings:
     return Settings(
         dart_api_key=os.getenv("DART_API_KEY") or None,
         datagokr_service_key=os.getenv("DATAGOKR_SERVICE_KEY") or None,
+        # 해외 실행(GitHub Actions)에서는 서울 중계를 거쳐야 함 → supabase/functions/datagokr-relay
+        datagokr_relay_url=os.getenv("DATAGOKR_RELAY_URL") or None,
+        datagokr_relay_secret=os.getenv("DATAGOKR_RELAY_SECRET") or None,
         naver_client_id=os.getenv("NAVER_CLIENT_ID") or None,
         naver_client_secret=os.getenv("NAVER_CLIENT_SECRET") or None,
         supabase_db_url=os.getenv("SUPABASE_DB_URL") or None,

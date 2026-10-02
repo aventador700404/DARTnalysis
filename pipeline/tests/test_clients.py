@@ -83,6 +83,25 @@ def test_datagokr_portal_error_is_readable():
 
 
 @responses.activate
+def test_datagokr_via_seoul_relay():
+    """중계 모드: 서비스키는 보내지 않고, svc·비밀 헤더·서울 리전 헤더를 붙여 중계 주소로 보낸다."""
+    relay = "https://ref.supabase.co/functions/v1/datagokr-relay"
+    item = {"basDt": "20260929", "srtnCd": "005930", "clpr": "105"}
+    responses.get(relay, json={"response": {"header": {"resultCode": "00"}, "body": {"totalCount": 1, "items": {"item": [item]}}}})
+    c = DataGoKrClient(None, min_interval=0, relay_url=relay, relay_secret="s3cret")
+    assert list(c.stock_prices(bas_dt="20260929"))[0]["clpr"] == "105"
+    req = responses.calls[0].request
+    assert "svc=stock" in req.url and "serviceKey" not in req.url and "basDt=20260929" in req.url
+    assert req.headers["x-relay-secret"] == "s3cret" and req.headers["x-region"] == "ap-northeast-2"
+
+    responses.get(relay, json={"error": "unauthorized"}, status=401)
+    with pytest.raises(DataGoKrError, match="서울 중계 오류 401"):
+        list(c.index_prices("코스피"))
+    with pytest.raises(ValueError):
+        DataGoKrClient(None)
+
+
+@responses.activate
 def test_naver_strips_html():
     responses.get(NEWS_URL, json={"items": [{"title": "<b>가상전자</b> &quot;자사주&quot;", "description": "요약", "originallink": "https://example.com/a", "pubDate": "Tue, 29 Sep 2026 16:10:00 +0900"}]})
     items = NaverClient("id", "secret", min_interval=0).search_news("가상전자")

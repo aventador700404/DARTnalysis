@@ -22,6 +22,10 @@ BASE = "https://apis.data.go.kr/1160100/service"
 STOCK_URL = f"{BASE}/GetStockSecuritiesInfoService/getStockPriceInfo"
 INDEX_URL = f"{BASE}/GetMarketIndexInfoService/getStockMarketIndex"
 
+#: 서울 중계(supabase/functions/datagokr-relay)가 받는 서비스 이름 · 실행 리전
+RELAY_SERVICES = {STOCK_URL: "stock", INDEX_URL: "index"}
+RELAY_REGION = "ap-northeast-2"
+
 
 class DataGoKrError(RuntimeError):
     pass
@@ -30,12 +34,20 @@ class DataGoKrError(RuntimeError):
 class DataGoKrClient:
     def __init__(
         self,
-        service_key: str,
+        service_key: str | None,
         session: requests.Session | None = None,
         usage: UsageMeter | None = None,
         min_interval: float = 0.1,
+        relay_url: str | None = None,
+        relay_secret: str | None = None,
     ):
+        """relay_url 이 있으면 서울 중계(Edge Function `datagokr-relay`)를 거친다.
+        apis.data.go.kr 은 해외(GitHub Actions)에서 접속이 막히기 때문. 이때 서비스키는 중계 쪽에 있다."""
+        if not service_key and not relay_url:
+            raise ValueError("DATAGOKR_SERVICE_KEY 또는 DATAGOKR_RELAY_URL 중 하나는 필요합니다.")
         self.service_key = service_key  # "Decoding" 키 (requests가 URL 인코딩함)
+        self.relay_url = relay_url
+        self.relay_secret = relay_secret
         self.session = session or make_session()
         self.usage = usage or UsageMeter()
         self.throttle = Throttle(min_interval)
@@ -43,11 +55,17 @@ class DataGoKrClient:
     def _get(self, url: str, **params: Any) -> dict:
         self.usage.hit("datagokr")
         self.throttle.wait()
-        resp = self.session.get(
-            url,
-            params={"serviceKey": self.service_key, "resultType": "json", **{k: v for k, v in params.items() if v is not None}},
-            timeout=60,
-        )
+        query = {"resultType": "json", **{k: v for k, v in params.items() if v is not None}}
+        headers = {}
+        if self.relay_url:
+            query["svc"] = RELAY_SERVICES[url]
+            headers = {"x-relay-secret": self.relay_secret or "", "x-region": RELAY_REGION}
+            url = self.relay_url
+        else:
+            query["serviceKey"] = self.service_key
+        resp = self.session.get(url, params=query, headers=headers, timeout=60)
+        if self.relay_url and resp.status_code in (401, 500) and "error" in resp.text[:200]:
+            raise DataGoKrError(f"서울 중계 오류 {resp.status_code}: {resp.text[:200]} — DATAGOKR_RELAY_SECRET·Supabase secrets 확인")
         gateway_error = portal_error_message(resp.text)
         if gateway_error:  # 키 미등록 등은 403·401과 함께 별도 형식으로 옴
             raise DataGoKrError(gateway_error)

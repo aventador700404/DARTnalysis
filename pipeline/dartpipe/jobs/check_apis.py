@@ -43,11 +43,13 @@ def main() -> None:
             fail(str(e))
 
     print("2) 공공데이터포털 (금융위원회 주식시세·지수시세)")
-    if not s.datagokr_service_key:
-        fail("DATAGOKR_SERVICE_KEY 없음")
+    if not (s.datagokr_service_key or s.datagokr_relay_url):
+        fail("DATAGOKR_SERVICE_KEY / DATAGOKR_RELAY_URL 없음")
     else:
         try:
-            gokr = DataGoKrClient(s.datagokr_service_key)
+            gokr = DataGoKrClient(s.datagokr_service_key, relay_url=s.datagokr_relay_url, relay_secret=s.datagokr_relay_secret)
+            if s.datagokr_relay_url:
+                print("  (서울 중계 경유)")
             got = None
             for back in range(1, 8):
                 got = next(gokr.stock_prices(bas_dt=ymd(today - timedelta(days=back)), market="KOSPI", num_rows=1), None)
