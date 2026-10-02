@@ -16,6 +16,9 @@ on:
       years:
         description: "backfill 기간(년)"
         default: "5"
+      limit:
+        description: "backfill 시험용: 앞에서부터 N개 종목만 (비우면 전체)"
+        default: ""
 
 concurrency:
   group: daily-batch
@@ -69,7 +72,11 @@ jobs:
         working-directory: pipeline
         run: |
           if [ "${{ inputs.job }}" = "backfill" ]; then
-            python -m dartpipe.jobs.backfill --years "${{ inputs.years || '5' }}"
+            if [ -n "${{ inputs.limit }}" ]; then
+              python -m dartpipe.jobs.backfill --years "${{ inputs.years || '5' }}" --limit "${{ inputs.limit }}"
+            else
+              python -m dartpipe.jobs.backfill --years "${{ inputs.years || '5' }}"
+            fi
           else
             python -m dartpipe.jobs.daily
           fi

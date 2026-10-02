@@ -88,6 +88,7 @@ python -m dartpipe.jobs.backfill --years 1 --limit 20   # 시험 백필 (SUPABAS
 - ⚠️ **공공데이터포털:** 키 승인 직후라 `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` (반영 대기). 응답 필드·`to_price_row`는 아직 실제로 확인 못 함 → 다음에 `check_apis`. 클라우드 세션에서 `apis.data.go.kr` 연결이 간헐적으로 끊기는 현상 있음.
 - ⏸ 네이버 뉴스: 키 미등록, 당분간 제외하고 진행.
 - Claude Code 클라우드 세션: 환경 설정 Network access=Custom에 `opendart.fss.or.kr`, `apis.data.go.kr`, `openapi.naver.com` 허용 + 키는 환경 변수(`.env` 대신)로 넣음.
+- ⚠️ **클라우드 세션에서는 Supabase Postgres(5432/6543) 직접 연결 불가** (HTTPS 프록시만 통과). 백필·일일 배치는 GitHub Actions `daily-batch` 수동 실행(job=backfill, years, limit)으로 돌림.
 - ⚠️ `web/lib/data/supabase.ts`와 Edge Function은 실제 Supabase에 붙여 테스트한 적 없음.
 
 ## 다음 할 일 (로드맵)
