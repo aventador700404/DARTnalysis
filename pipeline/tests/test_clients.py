@@ -5,7 +5,7 @@ import pytest
 import responses
 
 from dartpipe.clients.dart import BASE_URL, DartClient, DartError, parse_corp_code_zip
-from dartpipe.clients.datagokr import STOCK_URL, DataGoKrClient, to_price_row
+from dartpipe.clients.datagokr import STOCK_URL, DataGoKrClient, DataGoKrError, portal_error_message, to_price_row
 from dartpipe.clients.http import BudgetExceeded, UsageMeter
 from dartpipe.clients.naver import NEWS_URL, NaverClient
 
@@ -67,6 +67,19 @@ def test_datagokr_pagination_and_row():
     assert len(rows) == 2
     r = to_price_row(rows[0])
     assert r["date"] == "2026-09-29" and r["close"] == 105 and r["shares"] == 10000
+
+
+@responses.activate
+def test_datagokr_portal_error_is_readable():
+    """키 미등록 오류는 403 + JSON(또는 XML)으로 옴 → 'Forbidden' 대신 포털의 이유를 보여준다."""
+    err_json = {"OpenAPI_ServiceResponse": {"cmmMsgHeader": {"errMsg": "SERVICE_KEY_IS_NOT_REGISTERED_ERROR", "returnAuthMsg": "등록되지 않은 서비스키", "returnReasonCode": "30"}}}
+    responses.get(STOCK_URL, json=err_json, status=403)
+    with pytest.raises(DataGoKrError, match="SERVICE_KEY_IS_NOT_REGISTERED_ERROR.*등록되지 않은 서비스키"):
+        list(DataGoKrClient("key", min_interval=0).stock_prices(bas_dt="20260929"))
+    err_xml = "<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg><returnAuthMsg>LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR</returnAuthMsg></cmmMsgHeader></OpenAPI_ServiceResponse>"
+    msg = portal_error_message(err_xml)
+    assert msg.startswith("[공공데이터포털 LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR]") and "한도" in msg
+    assert portal_error_message('{"response": {"header": {"resultCode": "00"}}}') is None
 
 
 @responses.activate

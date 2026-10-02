@@ -34,7 +34,7 @@ pipeline/   Python 3.11+
   dartpipe/               classify · financials(분기 변환) · event_study · impact · valuation · health · benchmark · analyze(전체 계산) · store(Postgres)
   dartpipe/jobs/          backfill · daily · check_apis · common
   dartpipe/mock/          generate.py (가상 기업 → 실제 분석 함수 통과 → web/lib/mock/data.json)
-  tests/                  pytest 29개 (test_jobs_db는 pgserver로 로컬 Postgres 띄워 백필 전체 흐름 검증)
+  tests/                  pytest 30개 (test_jobs_db는 pgserver로 로컬 Postgres 띄워 백필 전체 흐름 검증)
 supabase/   migrations/0001~0003 · functions/poll-disclosures (1분 공시 폴링) · functions/_shared/classify.ts · cron.sql · config.toml
 .github/workflows/   ci.yml(테스트·린트·빌드) · daily-batch.yml(평일 KST 20:17, 키 없으면 건너뜀)
 ```
@@ -48,7 +48,7 @@ npm run lint && npm run build               # 수정 후 반드시
 
 # 파이프라인
 cd pipeline && pip install -r requirements.txt pgserver
-python -m pytest -q                         # 29개 통과해야 함
+python -m pytest -q                         # 30개 통과해야 함
 python -m dartpipe.mock.generate            # 샘플 데이터 재생성 (분석 로직 바꾸면 실행)
 python -m dartpipe.jobs.check_apis          # 실제 API 키 동작 확인 (.env 필요)
 python -m dartpipe.jobs.backfill --years 1 --limit 20   # 시험 백필 (SUPABASE_DB_URL 필요)
@@ -83,8 +83,11 @@ python -m dartpipe.jobs.backfill --years 1 --limit 20   # 시험 백필 (SUPABAS
 ## 현재 상태
 
 - ✅ 웹 빌드·린트 통과, 샘플 데이터로 전 화면 동작 (데스크톱·모바일·다크 확인)
-- ✅ 파이프라인 테스트 29개 통과 (로컬 Postgres 백필 통합 테스트 포함), Python·TS 분류 결과 일치 확인
-- ⚠️ **실제 API로는 아직 한 번도 실행 안 함.** OpenDART·공공데이터포털·네이버 응답 필드는 개발가이드 기준으로 작성. 첫 실행은 `check_apis`로 응답 형태부터 확인하고 필요하면 `clients/`와 `to_price_row` 수정.
+- ✅ 파이프라인 테스트 30개 통과 (로컬 Postgres 백필 통합 테스트 포함), Python·TS 분류 결과 일치 확인
+- ✅ **OpenDART 실제 호출 확인 (2026-10-02):** 공시검색·전체 재무제표 응답 필드가 코드와 일치, 수정 불필요. 공시 제목 끝에 공백이 붙어 오지만 분류(Py·TS)에서 trim함.
+- ⚠️ **공공데이터포털:** 키 승인 직후라 `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` (반영 대기). 응답 필드·`to_price_row`는 아직 실제로 확인 못 함 → 다음에 `check_apis`. 클라우드 세션에서 `apis.data.go.kr` 연결이 간헐적으로 끊기는 현상 있음.
+- ⏸ 네이버 뉴스: 키 미등록, 당분간 제외하고 진행.
+- Claude Code 클라우드 세션: 환경 설정 Network access=Custom에 `opendart.fss.or.kr`, `apis.data.go.kr`, `openapi.naver.com` 허용 + 키는 환경 변수(`.env` 대신)로 넣음.
 - ⚠️ `web/lib/data/supabase.ts`와 Edge Function은 실제 Supabase에 붙여 테스트한 적 없음.
 
 ## 다음 할 일 (로드맵)
