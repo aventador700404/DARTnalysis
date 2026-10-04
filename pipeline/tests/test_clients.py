@@ -107,3 +107,37 @@ def test_naver_strips_html():
     items = NaverClient("id", "secret", min_interval=0).search_news("가상전자")
     assert items[0]["title"] == '가상전자 "자사주"'
     assert items[0]["published_at"].startswith("2026-09-29T16:10")
+
+
+def test_relay_resolved_from_supabase_db_url():
+    """GitHub Actions에선 SUPABASE_DB_URL만으로 중계 주소·비밀값을 찾는다 (사람이 비밀번호를 만들 필요 없음)."""
+    import pandas as pd
+
+    from dartpipe.config import Settings
+    from dartpipe.jobs.common import make_datagokr, supabase_ref
+
+    assert supabase_ref("postgresql://postgres.abcref:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres") == "abcref"
+    assert supabase_ref("postgresql://postgres:pw@db.abcref.supabase.co:5432/postgres") == "abcref"
+    assert supabase_ref("postgresql://u:p@localhost:5432/x") is None
+
+    def settings(**kw):
+        base = dict(dart_api_key=None, datagokr_service_key=None, datagokr_relay_url=None, datagokr_relay_secret=None,
+                    naver_client_id=None, naver_client_secret=None, supabase_db_url=None, dart_daily_budget=1)
+        return Settings(**{**base, **kw})
+
+    class VaultStore:
+        def read_df(self, sql, params=None):
+            return pd.DataFrame({"s": ["vault-secret"]})
+
+    class NoFnStore:
+        def read_df(self, sql, params=None):
+            raise RuntimeError("function does not exist")
+
+    db = "postgresql://postgres.abcref:pw@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres"
+    c = make_datagokr(settings(supabase_db_url=db), VaultStore(), None)
+    assert c.relay_url == "https://abcref.supabase.co/functions/v1/datagokr-relay" and c.relay_secret == "vault-secret"
+    # 중계 함수가 없는 DB → 서비스키로 직접 접속
+    c = make_datagokr(settings(supabase_db_url=db, datagokr_service_key="k"), NoFnStore(), None)
+    assert c.relay_url is None and c.service_key == "k"
+    with pytest.raises(RuntimeError):
+        make_datagokr(settings(), NoFnStore(), None)

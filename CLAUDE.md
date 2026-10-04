@@ -34,8 +34,8 @@ pipeline/   Python 3.11+
   dartpipe/               classify · financials(분기 변환) · event_study · impact · valuation · health · benchmark · analyze(전체 계산) · store(Postgres)
   dartpipe/jobs/          backfill · daily · check_apis · common
   dartpipe/mock/          generate.py (가상 기업 → 실제 분석 함수 통과 → web/lib/mock/data.json)
-  tests/                  pytest 31개 (test_jobs_db는 pgserver로 로컬 Postgres 띄워 백필 전체 흐름 검증)
-supabase/   migrations/0001~0003 · functions/poll-disclosures (1분 공시 폴링) · functions/datagokr-relay (공공데이터포털 서울 중계) · functions/_shared/classify.ts · cron.sql · config.toml
+  tests/                  pytest 32개 (test_jobs_db는 pgserver로 로컬 Postgres 띄워 백필 전체 흐름 검증)
+supabase/   migrations/0001~0004 · functions/poll-disclosures (1분 공시 폴링) · functions/datagokr-relay (공공데이터포털 서울 중계) · functions/_shared/classify.ts · cron.sql · config.toml
 .github/workflows/   ci.yml(테스트·린트·빌드) · daily-batch.yml(평일 KST 20:17, 키 없으면 건너뜀)
 ```
 
@@ -48,7 +48,7 @@ npm run lint && npm run build               # 수정 후 반드시
 
 # 파이프라인
 cd pipeline && pip install -r requirements.txt pgserver
-python -m pytest -q                         # 31개 통과해야 함
+python -m pytest -q                         # 32개 통과해야 함
 python -m dartpipe.mock.generate            # 샘플 데이터 재생성 (분석 로직 바꾸면 실행)
 python -m dartpipe.jobs.check_apis          # 실제 API 키 동작 확인 (.env 필요)
 python -m dartpipe.jobs.backfill --years 1 --limit 20   # 시험 백필 (SUPABASE_DB_URL 필요)
@@ -83,14 +83,14 @@ python -m dartpipe.jobs.backfill --years 1 --limit 20   # 시험 백필 (SUPABAS
 ## 현재 상태
 
 - ✅ 웹 빌드·린트 통과, 샘플 데이터로 전 화면 동작 (데스크톱·모바일·다크 확인)
-- ✅ 파이프라인 테스트 31개 통과 (로컬 Postgres 백필 통합 테스트 포함), Python·TS 분류 결과 일치 확인
+- ✅ 파이프라인 테스트 32개 통과 (로컬 Postgres 백필 통합 테스트 포함), Python·TS 분류 결과 일치 확인
 - ✅ **OpenDART 실제 호출 확인 (2026-10-02):** 공시검색·전체 재무제표 응답 필드가 코드와 일치, 수정 불필요. 공시 제목 끝에 공백이 붙어 오지만 분류(Py·TS)에서 trim함.
 - ⚠️ **공공데이터포털:** 키 승인 직후라 `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` (반영 대기). 응답 필드·`to_price_row`는 아직 실제로 확인 못 함 → 다음에 `check_apis`. 클라우드 세션에서 `apis.data.go.kr` 연결이 간헐적으로 끊기는 현상 있음.
 - ⏸ 네이버 뉴스: 키 미등록, 당분간 제외하고 진행.
 - Claude Code 클라우드 세션: 환경 설정 Network access=Custom에 `opendart.fss.or.kr`, `apis.data.go.kr`, `openapi.naver.com` 허용 + 키는 환경 변수(`.env` 대신)로 넣음.
 - ⚠️ **클라우드 세션에서는 Supabase Postgres(5432/6543) 직접 연결 불가** (HTTPS 프록시만 통과). 백필·일일 배치는 GitHub Actions `daily-batch` 수동 실행(job=backfill, years, limit)으로 돌림.
 - ✅ **Supabase 프로젝트 `dartnalysis` (ref `ojmfbdyxxzryuyehblvt`, 서울 ap-northeast-2)** 생성·migrations 0001~0003 적용 (2026-10-02, Supabase 커넥터). 시험용 빈 테이블 `_probe`가 RLS 잠금 상태로 남아 있음 — 대시보드에서 삭제 가능. DB 비밀번호·`SUPABASE_DB_URL`은 사용자만 보관.
-- ⚠️ **공공데이터포털(apis.data.go.kr)은 해외 IP 차단:** GitHub Actions(미국)는 연결 시간 초과, 클라우드 세션은 간헐 끊김, Supabase 서울은 정상. → Edge Function `datagokr-relay`(서울 고정, `x-region: ap-northeast-2`)가 중계. 파이프라인은 `DATAGOKR_RELAY_URL`·`DATAGOKR_RELAY_SECRET`이 있으면 중계 경유, 서비스키는 Supabase secrets(`DATAGOKR_SERVICE_KEY`, `RELAY_SECRET`)에만.
+- ⚠️ **공공데이터포털(apis.data.go.kr)은 해외 IP 차단:** GitHub Actions(미국)는 연결 시간 초과, 클라우드 세션은 간헐 끊김, Supabase 서울은 정상. → Edge Function `datagokr-relay`(서울 고정, `x-region: ap-northeast-2`)가 중계. 중계 비밀값은 DB Vault에 자동 생성(migrations/0004, `public.datagokr_relay_secret()` — service role만 실행). 파이프라인은 `SUPABASE_DB_URL`에서 프로젝트 ref·비밀값을 찾아 자동으로 중계 경유(`jobs/common.make_datagokr`), 없으면 서비스키로 직접 접속. 공공데이터포털 서비스키는 Supabase Edge Function secrets(`DATAGOKR_SERVICE_KEY`)에만 — GitHub에는 필요 없음.
 - ⚠️ `web/lib/data/supabase.ts`와 Edge Function은 실제 Supabase에 붙여 테스트한 적 없음.
 
 ## 다음 할 일 (로드맵)

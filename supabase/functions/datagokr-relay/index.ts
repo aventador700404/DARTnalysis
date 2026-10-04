@@ -4,8 +4,9 @@
 //
 // 호출: GET /functions/v1/datagokr-relay?svc=stock|index&<원래 파라미터>
 //   헤더 x-region: ap-northeast-2   ← 반드시 서울에서 실행되도록
-//   헤더 x-relay-secret: <RELAY_SECRET>
-// 필요한 비밀값 (supabase secrets set ...): DATAGOKR_SERVICE_KEY, RELAY_SECRET
+//   헤더 x-relay-secret: <중계 비밀값>
+// 필요한 비밀값 (supabase secrets set ...): DATAGOKR_SERVICE_KEY 하나뿐.
+// 중계 비밀값은 DB Vault에 자동 생성돼 있음 (migrations/0004) → service role로 꺼내 씀.
 // JWT 검사는 끄고(config.toml) x-relay-secret 으로 인증한다.
 
 const BASE = "https://apis.data.go.kr/1160100/service";
@@ -19,6 +20,37 @@ function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
+// service role 키: 기존 방식(SUPABASE_SERVICE_ROLE_KEY) 또는 새 방식(SUPABASE_SECRET_KEYS JSON)
+function serviceKey(): string | undefined {
+  const legacy = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacy) return legacy;
+  try {
+    return JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}").default;
+  } catch {
+    return undefined;
+  }
+}
+
+// 중계 비밀값: 인스턴스당 한 번만 DB에서 읽고 재사용
+let relaySecret: Promise<string | undefined> | undefined;
+function getRelaySecret(): Promise<string | undefined> {
+  relaySecret ??= (async () => {
+    const key = serviceKey();
+    const url = Deno.env.get("SUPABASE_URL");
+    if (!key || !url) return undefined;
+    const r = await fetch(`${url}/rest/v1/rpc/datagokr_relay_secret`, {
+      method: "POST",
+      headers: { apikey: key, Authorization: `Bearer ${key}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    return r.ok ? ((await r.json()) as string | null) ?? undefined : undefined;
+  })().catch(() => undefined);
+  return relaySecret.then((v) => {
+    if (!v) relaySecret = undefined; // 실패는 캐시하지 않음
+    return v;
+  });
+}
+
 // 길이·내용이 달라도 걸리는 시간이 같은 비교 (비밀값 추측 방지)
 function sameSecret(a: string, b: string): boolean {
   const x = new TextEncoder().encode(a);
@@ -29,9 +61,10 @@ function sameSecret(a: string, b: string): boolean {
 }
 
 Deno.serve(async (req) => {
-  const secret = Deno.env.get("RELAY_SECRET");
-  const serviceKey = Deno.env.get("DATAGOKR_SERVICE_KEY");
-  if (!secret || !serviceKey) return json(500, { error: "relay not configured (RELAY_SECRET / DATAGOKR_SERVICE_KEY)" });
+  const dataKey = Deno.env.get("DATAGOKR_SERVICE_KEY");
+  if (!dataKey) return json(500, { error: "relay not configured: set DATAGOKR_SERVICE_KEY in Edge Function secrets" });
+  const secret = await getRelaySecret();
+  if (!secret) return json(500, { error: "relay not configured: vault secret datagokr_relay_secret missing" });
   if (req.method !== "GET") return json(405, { error: "GET only" });
   if (!sameSecret(req.headers.get("x-relay-secret") ?? "", secret)) return json(401, { error: "unauthorized" });
 
@@ -41,7 +74,7 @@ Deno.serve(async (req) => {
 
   const out = new URL(target);
   for (const [k, v] of incoming.searchParams) if (!DROP.has(k)) out.searchParams.set(k, v);
-  out.searchParams.set("serviceKey", serviceKey);
+  out.searchParams.set("serviceKey", dataKey);
 
   try {
     const r = await fetch(out, { signal: AbortSignal.timeout(50_000) });

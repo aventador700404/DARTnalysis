@@ -14,7 +14,6 @@ import logging
 from datetime import timedelta
 
 from ..clients.dart import DartClient
-from ..clients.datagokr import DataGoKrClient
 from ..clients.http import BudgetExceeded, UsageMeter
 from ..clients.naver import NaverClient
 from ..config import REPO_ROOT, get_settings, require
@@ -56,9 +55,9 @@ def main() -> None:
     s = get_settings()
     usage = UsageMeter(budgets={"dart": s.dart_daily_budget})
     dart = DartClient(require(s.dart_api_key, "DART_API_KEY"), usage=usage, cache_dir=REPO_ROOT / "pipeline" / ".cache" / "dart")
-    gokr = DataGoKrClient(s.datagokr_service_key, usage=usage, relay_url=s.datagokr_relay_url, relay_secret=s.datagokr_relay_secret)
-    naver = NaverClient(s.naver_client_id, s.naver_client_secret, usage=usage) if s.naver_client_id and s.naver_client_secret else None
     store = PgStore(require(s.supabase_db_url, "SUPABASE_DB_URL"))
+    gokr = common.make_datagokr(s, store, usage)
+    naver = NaverClient(s.naver_client_id, s.naver_client_secret, usage=usage) if s.naver_client_id and s.naver_client_secret else None
     as_of = common.today_kst()
     try:
         run(dart, gokr, naver, store, args.years, args.limit, as_of, usage)

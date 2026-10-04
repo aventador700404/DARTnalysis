@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -20,6 +21,44 @@ from ..clients.naver import NaverClient
 from ..financials import extract_report, parse_amount, quarterize_year
 
 log = logging.getLogger("dartpipe")
+
+
+def supabase_ref(db_url: str | None) -> str | None:
+    """Supabase 연결 문자열에서 프로젝트 ref 추출 (pooler: 사용자명 postgres.<ref> / 직접: db.<ref>.supabase.co)."""
+    if not db_url:
+        return None
+    u = urlparse(db_url)
+    if u.username and u.username.startswith("postgres."):
+        return u.username.split(".", 1)[1]
+    host = u.hostname or ""
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        return host[3:-len(".supabase.co")]
+    return None
+
+
+def make_datagokr(settings, store, usage) -> DataGoKrClient:
+    """공공데이터포털 클라이언트. 해외(GitHub Actions)에서는 직접 접속이 막히므로 서울 중계를 쓴다.
+
+    1) DATAGOKR_RELAY_URL/SECRET 환경변수가 있으면 그대로
+    2) 없으면 SUPABASE_DB_URL에서 프로젝트를 알아내고, 중계 비밀값은 DB Vault에서 꺼냄 (migrations/0004)
+    3) 둘 다 안 되면 서비스키로 직접 접속 (국내 PC에서 실행할 때)
+    """
+    s = settings
+    if s.datagokr_relay_url:
+        return DataGoKrClient(s.datagokr_service_key, usage=usage, relay_url=s.datagokr_relay_url, relay_secret=s.datagokr_relay_secret)
+    ref = supabase_ref(s.supabase_db_url)
+    if ref:
+        try:
+            secret = store.read_df("select public.datagokr_relay_secret() as s")["s"].iloc[0]
+        except Exception as e:  # noqa: BLE001 — 함수가 없는 DB면 직접 접속으로
+            log.warning("중계 비밀값을 못 읽어 직접 접속합니다: %s", type(e).__name__)
+            secret = None
+        if secret:
+            log.info("공공데이터포털: 서울 중계 경유 (%s)", ref)
+            return DataGoKrClient(None, usage=usage, relay_url=f"https://{ref}.supabase.co/functions/v1/datagokr-relay", relay_secret=secret)
+    if not s.datagokr_service_key:
+        raise RuntimeError("공공데이터포털 접속 방법이 없습니다: DATAGOKR_SERVICE_KEY 또는 Supabase 중계(SUPABASE_DB_URL)가 필요합니다.")
+    return DataGoKrClient(s.datagokr_service_key, usage=usage)
 KST = ZoneInfo("Asia/Seoul")
 
 #: 상세 API를 불러 재무 영향을 계산할 공시 세부 유형

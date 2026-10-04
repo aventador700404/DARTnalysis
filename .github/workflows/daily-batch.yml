@@ -1,8 +1,8 @@
 # 매일 장 마감 후: 주가·재무 갱신 + 공시 후 수익률·건강검진 재계산
 # 저장소 Settings > Secrets and variables > Actions 에 아래 값을 등록해야 실행됩니다.
-#   DART_API_KEY, SUPABASE_DB_URL, DATAGOKR_RELAY_URL, DATAGOKR_RELAY_SECRET, (선택) NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
+#   DART_API_KEY, SUPABASE_DB_URL, (선택) NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
 # 공공데이터포털은 해외(Actions 서버)에서 접속이 막혀 서울 중계(supabase/functions/datagokr-relay)를 거친다.
-# 서비스키(DATAGOKR_SERVICE_KEY)는 Supabase secrets에만 있으면 됨.
+# 중계 주소·비밀값은 SUPABASE_DB_URL로 자동으로 찾음. 공공데이터포털 서비스키는 Supabase Edge Function secrets에만.
 name: daily-batch
 
 on:
@@ -32,9 +32,6 @@ jobs:
     timeout-minutes: 120
     env:
       DART_API_KEY: ${{ secrets.DART_API_KEY }}
-      DATAGOKR_SERVICE_KEY: ${{ secrets.DATAGOKR_SERVICE_KEY }}
-      DATAGOKR_RELAY_URL: ${{ secrets.DATAGOKR_RELAY_URL }}
-      DATAGOKR_RELAY_SECRET: ${{ secrets.DATAGOKR_RELAY_SECRET }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
       NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
@@ -42,7 +39,7 @@ jobs:
       - name: 비밀값 확인
         id: check
         run: |
-          if [ -z "$DART_API_KEY" ] || [ -z "$SUPABASE_DB_URL" ] || { [ -z "$DATAGOKR_RELAY_URL" ] && [ -z "$DATAGOKR_SERVICE_KEY" ]; }; then
+          if [ -z "$DART_API_KEY" ] || [ -z "$SUPABASE_DB_URL" ]; then
             echo "::notice::API 키·DB 연결 문자열이 아직 등록되지 않아 건너뜁니다 (README 4장 참고)."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
