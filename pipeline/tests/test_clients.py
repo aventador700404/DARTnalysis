@@ -141,3 +141,11 @@ def test_relay_resolved_from_supabase_db_url():
     assert c.relay_url is None and c.service_key == "k"
     with pytest.raises(RuntimeError):
         make_datagokr(settings(), NoFnStore(), None)
+
+
+def test_portal_key_accepts_encoding_or_decoding():
+    from dartpipe.config import _portal_key
+
+    assert _portal_key(" abc+/de==\n") == "abc+/de=="
+    assert _portal_key("abc%2B%2Fde%3D%3D") == "abc+/de=="
+    assert _portal_key("a1b2c3") == "a1b2c3" and _portal_key("  ") is None

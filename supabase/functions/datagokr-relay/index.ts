@@ -51,6 +51,19 @@ function getRelaySecret(): Promise<string | undefined> {
   });
 }
 
+// 포털 키는 Encoding(%2B 등 포함)·Decoding 두 형태가 있음 → 어느 쪽을 넣어도 Decoding으로 맞춤.
+// (Encoding 키를 그대로 쓰면 URL에 넣을 때 한 번 더 인코딩돼 "등록되지 않은 서비스키"가 됨)
+function normalizeKey(raw: string | undefined): string | undefined {
+  const k = raw?.trim(); // 붙여넣을 때 딸려온 공백·줄바꿈 제거
+  if (!k) return undefined;
+  if (!/%[0-9A-Fa-f]{2}/.test(k)) return k;
+  try {
+    return decodeURIComponent(k);
+  } catch {
+    return k;
+  }
+}
+
 // 길이·내용이 달라도 걸리는 시간이 같은 비교 (비밀값 추측 방지)
 function sameSecret(a: string, b: string): boolean {
   const x = new TextEncoder().encode(a);
@@ -61,7 +74,7 @@ function sameSecret(a: string, b: string): boolean {
 }
 
 Deno.serve(async (req) => {
-  const dataKey = Deno.env.get("DATAGOKR_SERVICE_KEY")?.trim(); // 붙여넣을 때 딸려온 공백·줄바꿈 제거
+  const dataKey = normalizeKey(Deno.env.get("DATAGOKR_SERVICE_KEY"));
   if (!dataKey) return json(500, { error: "relay not configured: set DATAGOKR_SERVICE_KEY in Edge Function secrets" });
   const secret = await getRelaySecret();
   if (!secret) return json(500, { error: "relay not configured: vault secret datagokr_relay_secret missing" });

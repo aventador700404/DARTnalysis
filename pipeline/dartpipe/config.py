@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,10 +25,20 @@ class Settings:
     dart_daily_budget: int
 
 
+def _portal_key(raw: str | None) -> str | None:
+    """공공데이터포털 키: 공백 제거 + Encoding 형태(%2B 등)면 Decoding으로 (requests가 다시 인코딩하므로)."""
+    from urllib.parse import unquote
+
+    k = (raw or "").strip()
+    if not k:
+        return None
+    return unquote(k) if re.search(r"%[0-9A-Fa-f]{2}", k) else k
+
+
 def get_settings() -> Settings:
     return Settings(
         dart_api_key=os.getenv("DART_API_KEY") or None,
-        datagokr_service_key=(os.getenv("DATAGOKR_SERVICE_KEY") or "").strip() or None,  # 붙여넣기 공백 제거
+        datagokr_service_key=_portal_key(os.getenv("DATAGOKR_SERVICE_KEY")),
         # 해외 실행(GitHub Actions)에서는 서울 중계를 거쳐야 함 → supabase/functions/datagokr-relay
         datagokr_relay_url=os.getenv("DATAGOKR_RELAY_URL") or None,
         datagokr_relay_secret=os.getenv("DATAGOKR_RELAY_SECRET") or None,
