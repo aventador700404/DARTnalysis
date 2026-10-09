@@ -32,6 +32,10 @@ KSIC_2DIGIT = {
 
 FINANCIAL_PREFIXES = ("64", "65", "66")
 
+# 지주회사(64992)는 금융지주(KB금융)와 일반 지주(LG·SK·삼양홀딩스)가 같은 코드라 이름으로 나눈다.
+HOLDING_COMPANY = "64992"
+FINANCIAL_HOLDING_NAMES = {"신한지주"}  # 이름에 '금융'이 없는 금융지주
+
 
 def ksic_group(code: str | None) -> str | None:
     return code[:3] if code and len(code) >= 3 else code
@@ -40,8 +44,14 @@ def ksic_group(code: str | None) -> str | None:
 def ksic_name(code: str | None) -> str | None:
     if not code:
         return None
+    if code.startswith(HOLDING_COMPANY):
+        return "지주회사"
     return KSIC_2DIGIT.get(code[:2])
 
 
-def is_financial(code: str | None) -> bool:
-    return bool(code) and code[:2] in FINANCIAL_PREFIXES
+def is_financial(code: str | None, name: str | None = None) -> bool:
+    if not code:
+        return False
+    if code.startswith(HOLDING_COMPANY):
+        return "금융" in (name or "") or (name or "") in FINANCIAL_HOLDING_NAMES
+    return code[:2] in FINANCIAL_PREFIXES

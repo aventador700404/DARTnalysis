@@ -222,3 +222,13 @@ def test_load_financials_skips_unfinished_periods_and_prefers_ofs():
     load_financials(d, NullStore(), "C1", "000001", [2026], as_of=date(2026, 10, 9))
     assert [c[1] for c in d.calls].count("11011") == 0  # 2026 사업보고서(12월 결산)는 아직 없음
     assert d.calls == [(2026, "11013", "CFS"), (2026, "11013", "OFS"), (2026, "11012", "OFS"), (2026, "11014", "OFS")]
+
+
+def test_holding_companies_are_not_all_financial():
+    """지주회사(64992): 금융지주만 금융업, 일반 지주(LG·삼양홀딩스)는 건강검진 대상. (2026-10-09 DART 실제 코드)"""
+    from dartpipe.ksic import is_financial, ksic_name
+
+    assert is_financial("64992", "KB금융") and is_financial("64992", "하나금융지주") and is_financial("64992", "신한지주")
+    assert not is_financial("64992", "LG") and not is_financial("64992", "삼양홀딩스") and not is_financial("64992", "한국앤컴퍼니")
+    assert is_financial("64121", "기업은행") and is_financial("65121", "DB손해보험") and not is_financial("71531", "성창기업지주")
+    assert ksic_name("64992") == "지주회사" and ksic_name("64121") == "금융업"

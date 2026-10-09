@@ -96,15 +96,16 @@ def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date
         corp = corp_by_stock[code]
         info = dart.company(corp["corp_code"])
         induty = info.get("induty_code")
+        name = info.get("stock_name") or corp["corp_name"]
         rows.append(
             {
                 "code": code,
                 "corp_code": corp["corp_code"],
-                "name": info.get("stock_name") or corp["corp_name"],
+                "name": name,
                 "market": "KOSPI",
                 "ksic": ksic.ksic_group(induty),
                 "ksic_name": ksic.ksic_name(induty),
-                "is_financial": ksic.is_financial(induty),
+                "is_financial": ksic.is_financial(induty, name),
             }
         )
     store.upsert("companies", rows, update_columns=["corp_code", "name", "market", "ksic", "ksic_name", "is_financial"])
