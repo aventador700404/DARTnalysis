@@ -49,6 +49,7 @@ class DartError(RuntimeError):
             "010": "등록되지 않은 키입니다. DART_API_KEY 값을 확인하세요.",
             "011": "사용할 수 없는 키입니다 (일시 정지).",
             "020": "하루 호출 한도(2만 건)를 넘었습니다. 내일 다시 실행하세요.",
+            "800": "OpenDART 시스템 점검 중입니다 (공휴일·주말에 잦음). 점검이 끝난 뒤 다시 실행하세요.",
             "901": "계정의 개인정보 보유기간이 만료돼 키가 막혔습니다. OpenDART에서 계정을 갱신하세요.",
         }.get(status, "")
         super().__init__(f"[DART {status}] {endpoint}: {message} {hint}".strip())
@@ -112,6 +113,9 @@ class DartClient:
         self.throttle.wait()
         resp = self.session.get(f"{BASE_URL}/corpCode.xml", params={"crtfc_key": self.api_key}, timeout=60)
         resp.raise_for_status()
+        if not resp.content.startswith(b"PK"):  # 오류는 zip 대신 <result><status>…</status> XML로 옴
+            root = ET.fromstring(resp.content)
+            raise DartError(root.findtext("status", ""), (root.findtext("message") or "").strip(), "corpCode")
         return parse_corp_code_zip(resp.content)
 
     def list_disclosures(

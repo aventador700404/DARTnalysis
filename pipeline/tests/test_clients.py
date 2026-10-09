@@ -48,6 +48,16 @@ def test_budget_guard():
         m.hit("dart")
 
 
+@responses.activate
+def test_corp_code_error_is_readable():
+    """corpCode는 오류일 때 zip 대신 XML을 줌 → 'BadZipFile' 대신 DART 상태·이유를 보여준다."""
+    xml = '<?xml version="1.0" encoding="UTF-8"?><result><status>800</status><message>시스템 점검으로 인한  서비스가 중지 중입니다.</message></result>'
+    responses.get(f"{BASE_URL}/corpCode.xml", body=xml, content_type="application/xml")
+    with pytest.raises(DartError) as e:
+        DartClient("k" * 40, min_interval=0).corp_codes()
+    assert e.value.status == "800" and "점검" in str(e.value)
+
+
 def test_corp_code_zip():
     xml = "<result><list><corp_code>00126380</corp_code><corp_name>가상전자</corp_name><stock_code>005930</stock_code></list></result>"
     buf = io.BytesIO()
