@@ -27,7 +27,7 @@ class Settings:
 def get_settings() -> Settings:
     return Settings(
         dart_api_key=os.getenv("DART_API_KEY") or None,
-        datagokr_service_key=os.getenv("DATAGOKR_SERVICE_KEY") or None,
+        datagokr_service_key=(os.getenv("DATAGOKR_SERVICE_KEY") or "").strip() or None,  # 붙여넣기 공백 제거
         # 해외 실행(GitHub Actions)에서는 서울 중계를 거쳐야 함 → supabase/functions/datagokr-relay
         datagokr_relay_url=os.getenv("DATAGOKR_RELAY_URL") or None,
         datagokr_relay_secret=os.getenv("DATAGOKR_RELAY_SECRET") or None,

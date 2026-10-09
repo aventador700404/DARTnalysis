@@ -61,7 +61,7 @@ function sameSecret(a: string, b: string): boolean {
 }
 
 Deno.serve(async (req) => {
-  const dataKey = Deno.env.get("DATAGOKR_SERVICE_KEY");
+  const dataKey = Deno.env.get("DATAGOKR_SERVICE_KEY")?.trim(); // 붙여넣을 때 딸려온 공백·줄바꿈 제거
   if (!dataKey) return json(500, { error: "relay not configured: set DATAGOKR_SERVICE_KEY in Edge Function secrets" });
   const secret = await getRelaySecret();
   if (!secret) return json(500, { error: "relay not configured: vault secret datagokr_relay_secret missing" });
