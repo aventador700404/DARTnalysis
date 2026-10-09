@@ -82,8 +82,21 @@ Deno.serve(async (req) => {
   if (!sameSecret(req.headers.get("x-relay-secret") ?? "", secret)) return json(401, { error: "unauthorized" });
 
   const incoming = new URL(req.url);
+  // 진단: 키 값 대신 모양(길이·글자 종류·해시 앞 8자리)만 돌려줌 — Secrets에 넣은 값이 맞는지 확인용
+  if (incoming.searchParams.get("svc") === "diag") {
+    const raw = Deno.env.get("DATAGOKR_SERVICE_KEY") ?? "";
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(dataKey)));
+    return json(200, {
+      raw_len: raw.length,
+      len: dataKey.length,
+      hex_only: /^[0-9a-f]+$/i.test(dataKey),
+      has_plus_slash_eq: /[+/=]/.test(dataKey),
+      had_percent: /%[0-9A-Fa-f]{2}/.test(raw),
+      sha256_8: [...hash.slice(0, 4)].map((b) => b.toString(16).padStart(2, "0")).join(""),
+    });
+  }
   const target = TARGETS[incoming.searchParams.get("svc") ?? ""];
-  if (!target) return json(400, { error: "svc must be stock or index" });
+  if (!target) return json(400, { error: "svc must be stock, index or diag" });
 
   const out = new URL(target);
   for (const [k, v] of incoming.searchParams) if (!DROP.has(k)) out.searchParams.set(k, v);
