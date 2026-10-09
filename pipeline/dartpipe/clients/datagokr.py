@@ -1,7 +1,8 @@
 """공공데이터포털 금융위원회 API 클라이언트 (일별 주가·지수, 하루 지연).
 
-- 금융위원회_주식시세정보  : GetStockSecuritiesInfoService/getStockPriceInfo
-- 금융위원회_지수시세정보  : GetMarketIndexInfoService/getStockMarketIndex
+- 금융위원회_주식시세정보  : GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2
+- 금융위원회_지수시세정보  : GetMarketIndexInfoService_V2/getStockMarketIndex_V2
+  (V2 주소만 씀. 예전 /service/... 주소로 부르면 승인된 키도 "등록되지 않은 서비스키"가 남)
 
 주의: 응답 필드명은 활용가이드 기준이며, 포털 사정으로 바뀔 수 있으니 처음 실행할 때
 `python -m dartpipe.jobs.check_apis` 로 응답 형태를 한 번 확인하세요.
@@ -18,9 +19,9 @@ import requests
 
 from .http import Throttle, UsageMeter, make_session
 
-BASE = "https://apis.data.go.kr/1160100/service"
-STOCK_URL = f"{BASE}/GetStockSecuritiesInfoService/getStockPriceInfo"
-INDEX_URL = f"{BASE}/GetMarketIndexInfoService/getStockMarketIndex"
+BASE = "https://apis.data.go.kr/1160100"
+STOCK_URL = f"{BASE}/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2"
+INDEX_URL = f"{BASE}/GetMarketIndexInfoService_V2/getStockMarketIndex_V2"
 
 #: 서울 중계(supabase/functions/datagokr-relay)가 받는 서비스 이름 · 실행 리전
 RELAY_SERVICES = {STOCK_URL: "stock", INDEX_URL: "index"}
@@ -127,7 +128,7 @@ class DataGoKrClient:
 
 #: 포털 공통 오류 코드 → 사람이 읽을 설명
 _PORTAL_HINTS = {
-    "SERVICE_KEY_IS_NOT_REGISTERED_ERROR": "활용신청 승인 직후라면 1~2시간 뒤 다시 시도하세요. 계속되면 Decoding 키인지, 두 서비스 모두 승인됐는지 확인.",
+    "SERVICE_KEY_IS_NOT_REGISTERED_ERROR": "API 주소가 V2인지(포털 미리보기 주소와 같은지), 두 서비스 모두 승인됐는지, 승인·재발급 직후라면 1~2시간 뒤 다시 시도.",
     "SERVICE_KEY_IS_NULL": "DATAGOKR_SERVICE_KEY 가 비어 있습니다.",
     "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR": "하루 호출 한도를 넘었습니다. 내일 다시 실행하세요.",
     "SERVICE_ACCESS_DENIED_ERROR": "이 서비스에 대한 활용신청이 없거나 승인되지 않았습니다.",

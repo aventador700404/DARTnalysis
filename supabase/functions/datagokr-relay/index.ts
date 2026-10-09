@@ -9,10 +9,11 @@
 // 중계 비밀값은 DB Vault에 자동 생성돼 있음 (migrations/0004) → service role로 꺼내 씀.
 // JWT 검사는 끄고(config.toml) x-relay-secret 으로 인증한다.
 
-const BASE = "https://apis.data.go.kr/1160100/service";
+// V2 주소 (포털 미리보기와 같은 주소. 예전 /service/...Service/... 주소는 "등록되지 않은 서비스키"가 남)
+const BASE = "https://apis.data.go.kr/1160100";
 const TARGETS: Record<string, string> = {
-  stock: `${BASE}/GetStockSecuritiesInfoService/getStockPriceInfo`,
-  index: `${BASE}/GetMarketIndexInfoService/getStockMarketIndex`,
+  stock: `${BASE}/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2`,
+  index: `${BASE}/GetMarketIndexInfoService_V2/getStockMarketIndex_V2`,
 };
 const DROP = new Set(["svc", "serviceKey", "forceFunctionRegion"]);
 
@@ -82,21 +83,8 @@ Deno.serve(async (req) => {
   if (!sameSecret(req.headers.get("x-relay-secret") ?? "", secret)) return json(401, { error: "unauthorized" });
 
   const incoming = new URL(req.url);
-  // 진단: 키 값 대신 모양(길이·글자 종류·해시 앞 8자리)만 돌려줌 — Secrets에 넣은 값이 맞는지 확인용
-  if (incoming.searchParams.get("svc") === "diag") {
-    const raw = Deno.env.get("DATAGOKR_SERVICE_KEY") ?? "";
-    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(dataKey)));
-    return json(200, {
-      raw_len: raw.length,
-      len: dataKey.length,
-      hex_only: /^[0-9a-f]+$/i.test(dataKey),
-      has_plus_slash_eq: /[+/=]/.test(dataKey),
-      had_percent: /%[0-9A-Fa-f]{2}/.test(raw),
-      sha256_8: [...hash.slice(0, 4)].map((b) => b.toString(16).padStart(2, "0")).join(""),
-    });
-  }
   const target = TARGETS[incoming.searchParams.get("svc") ?? ""];
-  if (!target) return json(400, { error: "svc must be stock, index or diag" });
+  if (!target) return json(400, { error: "svc must be stock or index" });
 
   const out = new URL(target);
   for (const [k, v] of incoming.searchParams) if (!DROP.has(k)) out.searchParams.set(k, v);

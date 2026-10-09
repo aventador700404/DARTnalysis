@@ -149,3 +149,13 @@ def test_portal_key_accepts_encoding_or_decoding():
     assert _portal_key(" abc+/de==\n") == "abc+/de=="
     assert _portal_key("abc%2B%2Fde%3D%3D") == "abc+/de=="
     assert _portal_key("a1b2c3") == "a1b2c3" and _portal_key("  ") is None
+
+
+def test_to_price_row_matches_real_v2_response():
+    """2026-10-07 V2 실제 응답 1건 (필드명·문자열 숫자 형식 확인용)."""
+    item = {"basDt": "20261007", "srtnCd": "000020", "isinCd": "KR7000020008", "itmsNm": "동화약품", "mrktCtg": "KOSPI",
+            "clpr": "5610", "vs": "160", "fltRt": "2.94", "mkp": "5430", "hipr": "5950", "lopr": "5360", "trqu": "2421088",
+            "trPrc": "13732062195", "lstgStCnt": "27931470", "mrktTotAmt": "156695546700"}
+    assert "_V2/" in STOCK_URL
+    assert to_price_row(item) == {"date": "2026-10-07", "code": "000020", "name": "동화약품", "open": 5430, "high": 5950,
+                                  "low": 5360, "close": 5610, "volume": 2421088, "market_cap": 156695546700, "shares": 27931470}
