@@ -65,7 +65,7 @@ DARTanalysis/
 │  ├─ dartpipe/*.py         분류 · 분기 재무 변환 · 이벤트 스터디 · 재무 영향 · 밸류에이션 · 건강검진
 │  ├─ dartpipe/jobs/        backfill(최초 1회) · daily(매일) · check_apis(키 점검)
 │  ├─ dartpipe/mock/        가상 기업 샘플 데이터 생성기
-│  └─ tests/                pytest 35개 (로컬 Postgres로 백필 전체 흐름까지 검증)
+│  └─ tests/                pytest 36개 (로컬 Postgres로 백필 전체 흐름까지 검증)
 ├─ supabase/                DB 스키마(migrations) · Edge Function · 크론 SQL
 └─ .github/workflows/       ci(테스트·빌드) · daily-batch(일일 배치)
 ```

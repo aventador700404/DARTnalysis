@@ -126,14 +126,16 @@ class DartClient:
         corp_code: str | None = None,
         page_no: int = 1,
         page_count: int = 100,
+        pblntf_ty: str | None = None,
     ) -> dict:
-        """공시검색. corp_cls Y=유가증권(코스피). 회사 미지정 시 검색기간은 최대 3개월."""
+        """공시검색. corp_cls Y=유가증권(코스피). pblntf_ty A=정기공시. 회사 미지정 시 검색기간은 최대 3개월."""
         return self.get_json(
             "list",
             bgn_de=bgn_de,
             end_de=end_de,
             corp_cls=corp_cls,
             corp_code=corp_code,
+            pblntf_ty=pblntf_ty,
             page_no=page_no,
             page_count=page_count,
         )

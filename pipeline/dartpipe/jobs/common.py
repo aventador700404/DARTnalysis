@@ -15,7 +15,7 @@ import pandas as pd
 from .. import ksic
 from ..analyze import Outputs, Universe, build
 from ..classify import classify
-from ..clients.dart import REPORT_CODES, DartClient
+from ..clients.dart import REPORT_CODES, DartClient, DartError
 from ..clients.datagokr import DataGoKrClient, to_price_row
 from ..clients.naver import NaverClient
 from ..financials import extract_report, parse_amount, quarterize_year
@@ -87,7 +87,7 @@ def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date
             listed[item["srtnCd"].lstrip("A")] = item.get("itmsNm", "")
         if listed:
             break
-    corp_by_stock = {c["stock_code"]: c for c in dart.corp_codes() if c.get("stock_code")}
+    corp_by_stock = corp_codes_by_stock(dart, as_of, set(listed))
     codes = sorted(c for c in listed if c in corp_by_stock)
     if limit:
         codes = codes[:limit]
@@ -110,6 +110,29 @@ def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date
     store.upsert("companies", rows, update_columns=["corp_code", "name", "market", "ksic", "ksic_name", "is_financial"])
     log.info("companies: %d", len(rows))
     return rows
+
+
+def corp_codes_by_stock(dart: DartClient, as_of: date, wanted: set[str], windows: int = 5) -> dict[str, dict]:
+    """종목코드 → DART 고유번호. 보통은 corpCode 파일(zip) 하나로 끝.
+    그 파일이 점검(status 800) 등으로 막히면, 최근 정기공시 목록으로 대신 만든다
+    (공시마다 corp_code·stock_code가 같이 오고, 상장사는 분기마다 정기보고서를 냄)."""
+    try:
+        return {c["stock_code"]: c for c in dart.corp_codes() if c.get("stock_code")}
+    except DartError as exc:
+        log.warning("corpCode 실패 → 최근 정기공시 목록으로 대신 찾음: %s", exc)
+    found: dict[str, dict] = {}
+    end = as_of
+    for _ in range(windows):  # 회사 미지정 공시검색은 최대 3개월 → 3개월씩 거슬러 올라감
+        begin = end - timedelta(days=89)
+        for d in dart.iter_disclosures(ymd(begin), ymd(end), corp_cls="Y", pblntf_ty="A"):
+            code = (d.get("stock_code") or "").strip()
+            if code and code not in found:
+                found[code] = {"corp_code": d["corp_code"], "corp_name": d.get("corp_name", ""), "stock_code": code}
+        if wanted <= found.keys():
+            break
+        end = begin - timedelta(days=1)
+    log.info("정기공시 목록에서 찾은 회사: %d", len(found))
+    return found
 
 
 # ── 2. 주가·지수 ─────────────────────────────────────────────

@@ -169,3 +169,30 @@ def test_to_price_row_matches_real_v2_response():
     assert "_V2/" in STOCK_URL
     assert to_price_row(item) == {"date": "2026-10-07", "code": "000020", "name": "동화약품", "open": 5430, "high": 5950,
                                   "low": 5360, "close": 5610, "volume": 2421088, "market_cap": 156695546700, "shares": 27931470}
+
+
+def test_corp_codes_fall_back_to_periodic_reports():
+    """corpCode 파일이 점검으로 막혀도 최근 정기공시 목록으로 종목코드→고유번호를 만든다."""
+    from datetime import date
+
+    from dartpipe.jobs.common import corp_codes_by_stock
+
+    class MaintDart:
+        calls = []
+
+        def corp_codes(self):
+            raise DartError("800", "시스템 점검", "corpCode")
+
+        def iter_disclosures(self, bgn, end, **kw):
+            self.calls.append((bgn, end, kw))
+            if len(self.calls) == 1:
+                yield {"corp_code": "00126380", "corp_name": "가상전자", "stock_code": "005930", "report_nm": "반기보고서"}
+                yield {"corp_code": "00999999", "corp_name": "비상장", "stock_code": " "}
+            else:
+                yield {"corp_code": "00164779", "corp_name": "가상화학", "stock_code": "000660", "report_nm": "사업보고서"}
+
+    d = MaintDart()
+    got = corp_codes_by_stock(d, date(2026, 10, 9), {"005930", "000660"})
+    assert got["005930"]["corp_code"] == "00126380" and got["000660"]["corp_code"] == "00164779"
+    assert len(got) == 2 and len(d.calls) == 2  # 둘 다 찾으면 더 거슬러 올라가지 않음
+    assert d.calls[0] == ("20260712", "20261009", {"corp_cls": "Y", "pblntf_ty": "A"})
