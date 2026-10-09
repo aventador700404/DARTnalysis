@@ -77,7 +77,7 @@ class FakeDart:
     def insider_holdings(self, corp_code):
         return []
 
-    def financial_statements_any(self, corp_code, year, rc):
+    def financial_statements_any(self, corp_code, year, rc, prefer="CFS"):
         rows = self.gen.dart_rows(self.gen.truth(SPEC[corp_code[1:]]), year).get(rc, [])
         no = f"{year + (1 if rc == '11011' else 0)}0315000000"
         return "CFS", [{**r, "rcept_no": no} for r in rows]

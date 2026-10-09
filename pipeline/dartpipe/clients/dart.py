@@ -166,12 +166,14 @@ class DartClient:
         )
         return data.get("list", [])
 
-    def financial_statements_any(self, corp_code: str, year: int, reprt_code: str) -> tuple[str, list[dict]]:
-        """연결 우선, 없으면 별도."""
-        rows = self.financial_statements(corp_code, year, reprt_code, "CFS")
-        if rows:
-            return "CFS", rows
-        return "OFS", self.financial_statements(corp_code, year, reprt_code, "OFS")
+    def financial_statements_any(self, corp_code: str, year: int, reprt_code: str, prefer: str = "CFS") -> tuple[str, list[dict]]:
+        """연결(CFS) 우선, 없으면 별도(OFS). prefer="OFS"면 별도부터 (자회사 없는 회사는 호출 절반)."""
+        order = ("OFS", "CFS") if prefer == "OFS" else ("CFS", "OFS")
+        for fs_div in order:
+            rows = self.financial_statements(corp_code, year, reprt_code, fs_div)
+            if rows:
+                return fs_div, rows
+        return order[-1], []
 
     # ── 정기보고서 주요정보 ─────────────────────────────────
     def stock_totals(self, corp_code: str, year: int, reprt_code: str) -> list[dict]:

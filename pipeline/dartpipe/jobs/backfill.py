@@ -35,7 +35,7 @@ def run(dart, gokr, naver, store, years: int, limit: int | None, as_of, usage: U
     # 재무: 3년 성장률 + TTM 계산을 위해 (years + 1)년치
     fin_years = list(range(as_of.year - years - 1, as_of.year + 1))
     for c in companies:
-        common.load_financials(dart, store, c["corp_code"], c["code"], fin_years)
+        common.load_financials(dart, store, c["corp_code"], c["code"], fin_years, as_of)
         common.load_annual_facts(dart, store, c["corp_code"], c["code"], as_of.year - 1)
 
     if naver is not None:

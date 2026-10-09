@@ -45,7 +45,7 @@ def run(dart, gokr, naver, store, as_of, weekly: bool) -> None:
 
     new_reports = {d["code"] for d in disclosures if d.get("subtype") == "periodic_report"}
     for code in sorted(new_reports):
-        common.load_financials(dart, store, corp_of[code], code, [as_of.year - 1, as_of.year])
+        common.load_financials(dart, store, corp_of[code], code, [as_of.year - 1, as_of.year], as_of)
         common.load_annual_facts(dart, store, corp_of[code], code, as_of.year - 1)
 
     if naver is not None:

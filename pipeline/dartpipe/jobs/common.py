@@ -215,14 +215,20 @@ def attach_details(dart: DartClient, store, disclosures: list[dict]) -> int:
 
 
 # ── 4. 재무 ───────────────────────────────────────────────────
-def load_financials(dart: DartClient, store, corp_code: str, code: str, years: list[int]) -> int:
-    """연도별 4개 보고서 → 분기 값. 보고서 접수일을 '이 숫자를 쓸 수 있게 된 날'로 기록."""
+def load_financials(dart: DartClient, store, corp_code: str, code: str, years: list[int], as_of: date | None = None) -> int:
+    """연도별 4개 보고서 → 분기 값. 보고서 접수일을 '이 숫자를 쓸 수 있게 된 날'로 기록.
+    DART 재무 호출은 한 번에 10초 넘게 걸리기도 해서 헛호출을 줄인다:
+    아직 끝나지 않은 기간(as_of 기준)은 건너뛰고, 별도(OFS)만 있는 회사는 다음부터 별도를 먼저 부른다."""
     rows = []
+    prefer = "CFS"
     for year in years:
         reports, fs_divs, rcept = {}, {}, {}
-        for rc in REPORT_CODES:
-            fs_div, raw = dart.financial_statements_any(corp_code, year, rc)
+        for q, rc in QUARTER_REPORT.items():
+            if as_of and date(year, q * 3, 30 if q in (2, 3) else 31) >= as_of:
+                continue
+            fs_div, raw = dart.financial_statements_any(corp_code, year, rc, prefer=prefer)
             if raw:
+                prefer = fs_div
                 reports[rc] = extract_report(raw)
                 fs_divs[rc] = fs_div
                 no = raw[0].get("rcept_no", "")

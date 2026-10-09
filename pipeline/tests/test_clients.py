@@ -196,3 +196,29 @@ def test_corp_codes_fall_back_to_periodic_reports():
     assert got["005930"]["corp_code"] == "00126380" and got["000660"]["corp_code"] == "00164779"
     assert len(got) == 2 and len(d.calls) == 2  # 둘 다 찾으면 더 거슬러 올라가지 않음
     assert d.calls[0] == ("20260712", "20261009", {"corp_cls": "Y", "pblntf_ty": "A"})
+
+
+def test_load_financials_skips_unfinished_periods_and_prefers_ofs():
+    """끝나지 않은 기간은 부르지 않고, 연결이 없던 회사는 다음부터 별도를 먼저 부른다."""
+    from datetime import date
+
+    from dartpipe.jobs.common import load_financials
+
+    class OfsOnlyDart:
+        def __init__(self):
+            self.calls = []
+
+        def financial_statements(self, corp_code, year, rc, fs_div):
+            self.calls.append((year, rc, fs_div))
+            return [{"rcept_no": f"{year}0515000000", "account_id": "x"}] if fs_div == "OFS" else []
+
+        financial_statements_any = DartClient.financial_statements_any
+
+    class NullStore:
+        def upsert(self, table, rows, update_columns=None):
+            return len(rows)
+
+    d = OfsOnlyDart()
+    load_financials(d, NullStore(), "C1", "000001", [2026], as_of=date(2026, 10, 9))
+    assert [c[1] for c in d.calls].count("11011") == 0  # 2026 사업보고서(12월 결산)는 아직 없음
+    assert d.calls == [(2026, "11013", "CFS"), (2026, "11013", "OFS"), (2026, "11012", "OFS"), (2026, "11014", "OFS")]
