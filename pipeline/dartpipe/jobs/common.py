@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
@@ -21,6 +22,23 @@ from ..clients.naver import NaverClient
 from ..financials import extract_report, parse_amount, quarterize_year
 
 log = logging.getLogger("dartpipe")
+
+
+def pmap(fn, items, workers: int = 1) -> list:
+    """items 각각에 fn을 동시에 (최대 workers개) 적용, 순서대로 결과 반환.
+    DART 응답이 건당 수 초라 기다리는 시간을 겹치는 용도. 하나라도 실패(예: 하루 예산 초과)하면
+    남은 작업은 취소하고 그 오류를 그대로 올린다."""
+    items = list(items)
+    if workers <= 1 or len(items) <= 1:
+        return [fn(x) for x in items]
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futures = [ex.submit(fn, x) for x in items]
+        try:
+            return [f.result() for f in futures]
+        except BaseException:
+            for f in futures:
+                f.cancel()
+            raise
 
 
 def supabase_ref(db_url: str | None) -> str | None:
@@ -78,7 +96,7 @@ def ymd(d: date) -> str:
 
 
 # ── 1. 종목 목록 ─────────────────────────────────────────────
-def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date, limit: int | None = None) -> list[dict]:
+def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date, limit: int | None = None, workers: int = 1) -> list[dict]:
     """코스피 보통주 목록 = 금융위 시세(KOSPI) ∩ DART 고유번호(stock_code가 있는 회사)."""
     listed: dict[str, str] = {}
     for back in range(0, 10):  # 최근 거래일 찾기
@@ -91,10 +109,10 @@ def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date
     codes = sorted(c for c in listed if c in corp_by_stock)
     if limit:
         codes = codes[:limit]
+    infos = pmap(lambda code: dart.company(corp_by_stock[code]["corp_code"]), codes, workers)
     rows = []
-    for code in codes:
+    for code, info in zip(codes, infos):
         corp = corp_by_stock[code]
-        info = dart.company(corp["corp_code"])
         induty = info.get("induty_code")
         name = info.get("stock_name") or corp["corp_name"]
         rows.append(
@@ -159,14 +177,24 @@ def load_index(gokr: DataGoKrClient, store, begin: date, end: date) -> int:
 
 
 # ── 3. 공시 ───────────────────────────────────────────────────
-def load_disclosures(dart: DartClient, store, begin: date, end: date, codes: set[str]) -> list[dict]:
-    """코스피 공시 목록. 회사 미지정 검색은 3개월 제한이라 90일씩 나눠 조회.
+def load_disclosures(dart: DartClient, store, begin: date, end: date, codes: set[str], workers: int = 1) -> list[dict]:
+    """코스피 공시 목록. 회사 미지정 검색은 3개월 제한이라 90일씩 나눠 (동시에) 조회.
+    1주일 넘게 지난 구간은 목록이 바뀌지 않으므로 캐시 → 이어하기·재실행 때 다시 받지 않음.
     이미 있는 공시는 건드리지 않음 (실시간 수집이 기록한 '처음 발견 시각' 보존)."""
-    rows = []
+    windows = []
     start = begin
     while start <= end:
         stop = min(start + timedelta(days=89), end)
-        for it in dart.iter_disclosures(ymd(start), ymd(stop), corp_cls="Y"):
+        windows.append((start, stop))
+        start = stop + timedelta(days=1)
+    settled_before = today_kst() - timedelta(days=7)
+
+    def fetch(w: tuple[date, date]) -> list[dict]:
+        return list(dart.iter_disclosures(ymd(w[0]), ymd(w[1]), corp_cls="Y", cache=w[1] < settled_before))
+
+    rows = []
+    for items in pmap(fetch, windows, workers):
+        for it in items:
             code = (it.get("stock_code") or "").strip()
             if code not in codes:
                 continue
@@ -184,27 +212,31 @@ def load_disclosures(dart: DartClient, store, begin: date, end: date, codes: set
                     "is_correction": cls.is_correction,
                 }
             )
-        start = stop + timedelta(days=1)
     store.upsert("disclosures", rows)
     log.info("disclosures: %d", len(rows))
     return rows
 
 
-def attach_details(dart: DartClient, store, disclosures: list[dict]) -> int:
-    """재무 영향 계산용 상세(주요사항보고서·지분공시)를 붙인다. 회사·유형별로 한 번에 조회."""
+def attach_details(dart: DartClient, store, disclosures: list[dict], workers: int = 1) -> int:
+    """재무 영향 계산용 상세(주요사항보고서·지분공시)를 붙인다. 회사·유형별로 한 번에 (동시에) 조회."""
     need = [d for d in disclosures if not d.get("detail") and (d.get("subtype") in DETAIL_SUBTYPES or d.get("subtype") in ("major_holder", "insider"))]
     by_key: dict[tuple[str, str], list[dict]] = {}
     for d in need:
         by_key.setdefault((d["corp_code"], d["subtype"]), []).append(d)
-    updated = []
-    for (corp_code, subtype), items in by_key.items():
+
+
+    def fetch(entry: tuple[tuple[str, str], list[dict]]) -> list[dict]:
+        (corp_code, subtype), items = entry
         if subtype == "major_holder":
-            found = dart.major_holders(corp_code)
-        elif subtype == "insider":
-            found = dart.insider_holdings(corp_code)
-        else:
-            dates = sorted(str(i["rcept_dt"]).replace("-", "") for i in items)
-            found = dart.major_report(subtype, corp_code, dates[0], dates[-1])
+            return dart.major_holders(corp_code)
+        if subtype == "insider":
+            return dart.insider_holdings(corp_code)
+        dates = sorted(str(i["rcept_dt"]).replace("-", "") for i in items)
+        return dart.major_report(subtype, corp_code, dates[0], dates[-1])
+
+    entries = list(by_key.items())
+    updated = []
+    for ((_, _), items), found in zip(entries, pmap(fetch, entries, workers)):
         by_no = {f["rcept_no"]: f for f in found}
         for i in items:
             if i["rcept_no"] in by_no:

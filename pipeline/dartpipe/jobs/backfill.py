@@ -23,20 +23,27 @@ from . import common
 log = logging.getLogger("dartpipe")
 
 
-def run(dart, gokr, naver, store, years: int, limit: int | None, as_of, usage: UsageMeter) -> None:
+def run(dart, gokr, naver, store, years: int, limit: int | None, as_of, usage: UsageMeter, workers: int = 1) -> None:
     begin = as_of - timedelta(days=365 * years)
-    companies = common.refresh_companies(dart, gokr, store, as_of, limit=limit)
+    companies = common.refresh_companies(dart, gokr, store, as_of, limit=limit, workers=workers)
     codes = {c["code"] for c in companies}
     common.load_index(gokr, store, begin, as_of + timedelta(days=1))
     common.load_prices(gokr, store, begin, as_of + timedelta(days=1), codes)
-    disclosures = common.load_disclosures(dart, store, begin, as_of, codes)
-    common.attach_details(dart, store, disclosures)
+    disclosures = common.load_disclosures(dart, store, begin, as_of, codes, workers=workers)
+    common.attach_details(dart, store, disclosures, workers=workers)
 
-    # 재무: 3년 성장률 + TTM 계산을 위해 (years + 1)년치
+    # 재무: 3년 성장률 + TTM 계산을 위해 (years + 1)년치. 회사별로 동시에 (DB 쓰기는 store가 순서대로 처리)
     fin_years = list(range(as_of.year - years - 1, as_of.year + 1))
-    for c in companies:
+    done = [0]
+
+    def load_company(c: dict) -> None:
         common.load_financials(dart, store, c["corp_code"], c["code"], fin_years, as_of)
         common.load_annual_facts(dart, store, c["corp_code"], c["code"], as_of.year - 1)
+        done[0] += 1
+        if done[0] % 50 == 0:
+            log.info("재무 진행: %d / %d (DART %d회)", done[0], len(companies), usage.counts["dart"])
+
+    common.pmap(load_company, companies, workers)
 
     if naver is not None:
         recent = [d for d in disclosures if d["rcept_dt"] >= (as_of - timedelta(days=30)).isoformat()]
@@ -60,7 +67,7 @@ def main() -> None:
     naver = NaverClient(s.naver_client_id, s.naver_client_secret, usage=usage) if s.naver_client_id and s.naver_client_secret else None
     as_of = common.today_kst()
     try:
-        run(dart, gokr, naver, store, args.years, args.limit, as_of, usage)
+        run(dart, gokr, naver, store, args.years, args.limit, as_of, usage, workers=s.dart_workers)
     except BudgetExceeded as e:
         log.warning(str(e))
     finally:

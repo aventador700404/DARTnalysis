@@ -60,7 +60,7 @@ class FakeDart:
     def company(self, corp_code):
         return {"stock_name": SPEC[corp_code[1:]].name, "induty_code": SPEC[corp_code[1:]].ksic + "11"}
 
-    def iter_disclosures(self, bgn, end, corp_cls="Y"):
+    def iter_disclosures(self, bgn, end, corp_cls="Y", **_):
         for i, c in enumerate(SPEC):
             d = (pd.Timestamp(bgn) + timedelta(days=10 + i)).strftime("%Y%m%d")
             if d <= end:
@@ -101,7 +101,8 @@ def store(tmp_path_factory):
 
 def test_backfill_end_to_end(store):
     cal = pd.bdate_range(AS_OF - timedelta(days=420), AS_OF)
-    backfill.run(FakeDart(), FakeGokr(cal), None, store, years=1, limit=None, as_of=AS_OF, usage=UsageMeter())
+    # workers=4: 동시 요청 + 한 DB 연결 공유가 실제 Postgres에서 문제없는지까지 확인
+    backfill.run(FakeDart(), FakeGokr(cal), None, store, years=1, limit=None, as_of=AS_OF, usage=UsageMeter(), workers=4)
 
     n = lambda t: int(store.read_df(f"select count(*) as n from {t}")["n"].iloc[0])  # noqa: E731
     assert n("companies") == 6

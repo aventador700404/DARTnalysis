@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -19,7 +20,7 @@ def make_session(retries: int = 3) -> requests.Session:
         status_forcelist=(429, 500, 502, 503, 504),
         allowed_methods=("GET",),
     )
-    session.mount("https://", HTTPAdapter(max_retries=retry))
+    session.mount("https://", HTTPAdapter(max_retries=retry, pool_maxsize=16))  # 동시 요청용
     session.headers["User-Agent"] = "DARTanalysis/0.1 (+https://github.com/aventador700404/DARTanalysis)"
     return session
 
@@ -30,12 +31,14 @@ class UsageMeter:
 
     budgets: dict[str, int] = field(default_factory=dict)
     counts: Counter = field(default_factory=Counter)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def hit(self, api: str) -> None:
-        budget = self.budgets.get(api)
-        if budget is not None and self.counts[api] >= budget:
-            raise BudgetExceeded(api, budget)
-        self.counts[api] += 1
+        with self._lock:  # 여러 스레드가 동시에 불러도 예산을 넘지 않게
+            budget = self.budgets.get(api)
+            if budget is not None and self.counts[api] >= budget:
+                raise BudgetExceeded(api, budget)
+            self.counts[api] += 1
 
     def as_rows(self, day: str) -> list[dict]:
         return [{"day": day, "api": api, "calls": n} for api, n in self.counts.items()]
@@ -53,13 +56,16 @@ class Throttle:
 
     def __init__(self, min_interval: float):
         self.min_interval = min_interval
-        self._last = 0.0
+        self._next = 0.0
+        self._lock = threading.Lock()
 
     def wait(self) -> None:
+        """동시 요청이어도 '출발' 간격은 min_interval 이상 (응답 대기는 겹쳐도 됨)."""
         if self.min_interval <= 0:
             return
-        now = time.monotonic()
-        gap = now - self._last
-        if gap < self.min_interval:
-            time.sleep(self.min_interval - gap)
-        self._last = time.monotonic()
+        with self._lock:
+            now = time.monotonic()
+            start = max(now, self._next)
+            self._next = start + self.min_interval
+        if start > now:
+            time.sleep(start - now)

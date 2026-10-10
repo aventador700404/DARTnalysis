@@ -11,6 +11,7 @@ import io
 import json
 import xml.etree.ElementTree as ET
 import zipfile
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -127,10 +128,13 @@ class DartClient:
         page_no: int = 1,
         page_count: int = 100,
         pblntf_ty: str | None = None,
+        cache: bool = False,
     ) -> dict:
-        """공시검색. corp_cls Y=유가증권(코스피). pblntf_ty A=정기공시. 회사 미지정 시 검색기간은 최대 3개월."""
+        """공시검색. corp_cls Y=유가증권(코스피). pblntf_ty A=정기공시. 회사 미지정 시 검색기간은 최대 3개월.
+        cache=True는 이미 지난 기간에만 (목록이 더 바뀌지 않으므로 재실행·이어하기 때 다시 받지 않음)."""
         return self.get_json(
             "list",
+            cache=cache,
             bgn_de=bgn_de,
             end_de=end_de,
             corp_cls=corp_cls,
@@ -155,10 +159,13 @@ class DartClient:
 
     # ── 정기보고서 재무정보 ─────────────────────────────────
     def financial_statements(self, corp_code: str, year: int, reprt_code: str, fs_div: str = "CFS") -> list[dict]:
-        """단일회사 전체 재무제표. fs_div CFS=연결, OFS=별도. 지난 기간은 캐시."""
+        """단일회사 전체 재무제표. fs_div CFS=연결, OFS=별도.
+        제출 기한(분기 45일·사업보고서 90일)이 충분히 지난 기간만 캐시 — 최근 기간의 '아직 없음'을 영구 저장하지 않도록."""
+        month = {"11013": 3, "11012": 6, "11014": 9}.get(reprt_code, 12)
+        settled = date.today() > date(year, month, 28) + timedelta(days=120)
         data = self.get_json(
             "fnlttSinglAcntAll",
-            cache=True,
+            cache=settled,
             corp_code=corp_code,
             bsns_year=str(year),
             reprt_code=reprt_code,

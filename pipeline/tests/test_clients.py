@@ -232,3 +232,77 @@ def test_holding_companies_are_not_all_financial():
     assert not is_financial("64992", "LG") and not is_financial("64992", "삼양홀딩스") and not is_financial("64992", "한국앤컴퍼니")
     assert is_financial("64121", "기업은행") and is_financial("65121", "DB손해보험") and not is_financial("71531", "성창기업지주")
     assert ksic_name("64992") == "지주회사" and ksic_name("64121") == "금융업"
+
+
+def test_pmap_keeps_order_and_stops_on_budget():
+    """동시 실행: 결과 순서는 입력 순서 그대로, 하루 예산 초과는 그대로 올라와 백필을 멈춘다."""
+    import threading
+    import time
+
+    from dartpipe.jobs.common import pmap
+
+    assert pmap(lambda x: x * 2, [3, 1, 2], workers=3) == [6, 2, 4]
+    m = UsageMeter(budgets={"dart": 5})
+    lock, seen = threading.Lock(), []
+
+    def call(i):
+        m.hit("dart")
+        time.sleep(0.01)
+        with lock:
+            seen.append(i)
+
+    with pytest.raises(BudgetExceeded):
+        pmap(call, range(50), workers=4)
+    assert m.counts["dart"] == 5 and len(seen) <= 5  # 예산보다 더 부르지 않음
+
+
+def test_throttle_spaces_starts_across_threads():
+    import threading
+    import time
+
+    from dartpipe.clients.http import Throttle
+
+    t, starts = Throttle(0.05), []
+    lock = threading.Lock()
+
+    def go():
+        t.wait()
+        with lock:
+            starts.append(time.monotonic())
+
+    threads = [threading.Thread(target=go) for _ in range(5)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    starts.sort()
+    assert all(b - a >= 0.045 for a, b in zip(starts, starts[1:]))
+
+
+@responses.activate
+def test_settled_disclosure_windows_are_cached(tmp_path):
+    """지난 구간 공시 목록은 캐시 → 이어하기 때 다시 부르지 않음. 최근 구간은 매번 새로."""
+    responses.get(f"{BASE_URL}/list.json", json={"status": "000", "total_page": 1, "list": [{"rcept_no": "1"}]})
+    c = DartClient("k" * 40, min_interval=0, cache_dir=tmp_path)
+    for _ in range(2):
+        list(c.iter_disclosures("20240101", "20240330", corp_cls="Y", cache=True))
+    assert len(responses.calls) == 1
+    for _ in range(2):
+        list(c.iter_disclosures("20261001", "20261009", corp_cls="Y"))
+    assert len(responses.calls) == 3
+
+
+@responses.activate
+def test_recent_missing_financials_are_not_cached_forever(tmp_path):
+    """막 끝난 분기의 '아직 없음(013)'을 캐시하면 보고서가 나와도 못 받음 → 최근 기간은 캐시 안 함."""
+    from datetime import date
+
+    responses.get(f"{BASE_URL}/fnlttSinglAcntAll.json", json={"status": "013", "message": "조회된 데이타가 없습니다."})
+    c = DartClient("k" * 40, min_interval=0, cache_dir=tmp_path)
+    this_year = date.today().year
+    for _ in range(2):
+        c.financial_statements("00126380", this_year + 1, "11013")
+    assert len(responses.calls) == 2
+    for _ in range(2):
+        c.financial_statements("00126380", this_year - 3, "11013")
+    assert len(responses.calls) == 3

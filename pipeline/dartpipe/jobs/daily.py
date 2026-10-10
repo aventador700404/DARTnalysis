@@ -25,9 +25,9 @@ from . import common
 log = logging.getLogger("dartpipe")
 
 
-def run(dart, gokr, naver, store, as_of, weekly: bool) -> None:
+def run(dart, gokr, naver, store, as_of, weekly: bool, workers: int = 1) -> None:
     if weekly:
-        companies = common.refresh_companies(dart, gokr, store, as_of)
+        companies = common.refresh_companies(dart, gokr, store, as_of, workers=workers)
     else:
         companies = store.read_df("select code, corp_code, name from companies").to_dict("records")
     codes = {c["code"] for c in companies}
@@ -41,7 +41,7 @@ def run(dart, gokr, naver, store, as_of, weekly: bool) -> None:
         "select rcept_no, code, corp_code, rcept_dt, subtype from disclosures where detail is null and rcept_dt >= %(since)s",
         {"since": as_of - timedelta(days=30)},
     ).to_dict("records")
-    common.attach_details(dart, store, pending)
+    common.attach_details(dart, store, pending, workers=workers)
 
     new_reports = {d["code"] for d in disclosures if d.get("subtype") == "periodic_report"}
     for code in sorted(new_reports):
@@ -68,7 +68,7 @@ def main() -> None:
     naver = NaverClient(s.naver_client_id, s.naver_client_secret, usage=usage) if s.naver_client_id and s.naver_client_secret else None
     as_of = common.today_kst()
     try:
-        run(dart, gokr, naver, store, as_of, weekly=args.weekly or as_of.weekday() == 0)
+        run(dart, gokr, naver, store, as_of, weekly=args.weekly or as_of.weekday() == 0, workers=s.dart_workers)
     except BudgetExceeded as e:
         log.warning(str(e))
     finally:

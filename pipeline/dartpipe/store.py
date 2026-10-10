@@ -7,6 +7,7 @@ REST API는 한 번에 1,000행씩만 읽혀서 수십만 행의 주가를 읽�
 from __future__ import annotations
 
 import json
+import threading
 from collections import defaultdict
 from typing import Iterable, Protocol
 
@@ -48,9 +49,10 @@ class PgStore:
 
         self._psycopg = psycopg
         self.conn = psycopg.connect(dsn, autocommit=True)
+        self._lock = threading.RLock()  # 여러 스레드가 한 연결을 쓸 때 한 번에 하나씩
 
     def read_df(self, sql: str, params: dict | None = None) -> pd.DataFrame:
-        with self.conn.cursor() as cur:
+        with self._lock, self.conn.cursor() as cur:
             cur.execute(sql, params or {})
             cols = [c.name for c in cur.description]
             return pd.DataFrame(cur.fetchall(), columns=cols)
@@ -82,7 +84,7 @@ class PgStore:
             return v
 
         total = 0
-        with self.conn.cursor() as cur:
+        with self._lock, self.conn.cursor() as cur:
             for i in range(0, len(rows), chunk):
                 batch = [tuple(adapt(r.get(c), c) for c in cols) for r in rows[i : i + chunk]]
                 cur.executemany(stmt, batch)
@@ -93,7 +95,7 @@ class PgStore:
         """disclosures는 insert-only라서 상세(detail)만 따로 갱신."""
         from psycopg.types.json import Jsonb
 
-        with self.conn.cursor() as cur:
+        with self._lock, self.conn.cursor() as cur:
             cur.executemany("UPDATE disclosures SET detail = %s WHERE rcept_no = %s", [(Jsonb(r["detail"]), r["rcept_no"]) for r in rows])
 
 

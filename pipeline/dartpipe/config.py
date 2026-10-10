@@ -23,6 +23,7 @@ class Settings:
     naver_client_secret: str | None
     supabase_db_url: str | None
     dart_daily_budget: int
+    dart_workers: int = 6  # DART 동시 요청 수 (응답이 느려도 여러 개를 겹쳐 기다림)
 
 
 def _portal_key(raw: str | None) -> str | None:
@@ -46,6 +47,7 @@ def get_settings() -> Settings:
         naver_client_secret=os.getenv("NAVER_CLIENT_SECRET") or None,
         supabase_db_url=os.getenv("SUPABASE_DB_URL") or None,
         dart_daily_budget=int(os.getenv("DART_DAILY_BUDGET", "18000")),
+        dart_workers=int(os.getenv("DART_WORKERS", "6")),
     )
 
 

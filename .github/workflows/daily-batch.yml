@@ -29,7 +29,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 350  # 전체 백필(5년·825개사)은 수 시간 — GitHub 한도 360분
     env:
       DART_API_KEY: ${{ secrets.DART_API_KEY }}
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
