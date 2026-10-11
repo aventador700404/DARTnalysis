@@ -119,9 +119,17 @@ def test_backfill_end_to_end(store):
 
     # 다시 실행해도 중복 없이 갱신되는지 (멱등성), 처음 발견 시각은 유지
     seen_before = store.read_df("select rcept_no, first_seen_at from disclosures order by rcept_no")
-    backfill.run(FakeDart(), FakeGokr(cal), None, store, years=1, limit=None, as_of=AS_OF, usage=UsageMeter())
+    dart2 = FakeDart()
+    dart2.calls = []
+    for name in ("company", "major_report", "major_holders", "insider_holdings"):
+        orig = getattr(dart2, name)
+        setattr(dart2, name, lambda *a, _n=name, _f=orig: (dart2.calls.append(_n), _f(*a))[1])
+    backfill.run(dart2, FakeGokr(cal), None, store, years=1, limit=None, as_of=AS_OF, usage=UsageMeter())
     seen_after = store.read_df("select rcept_no, first_seen_at from disclosures order by rcept_no")
     assert seen_before.equals(seen_after)
+    # 이어서 돌릴 때: 이미 저장된 회사 정보·공시 상세는 DART에 다시 묻지 않음 (하루 호출 한도 절약)
+    assert dart2.calls == []
+    assert n("companies") == 6
 
     # Edge Function이 쓰는 호출 수 누적 함수
     store.read_df("select public.bump_api_usage('2026-09-30', 'dart', 3)")

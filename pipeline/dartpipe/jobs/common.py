@@ -109,9 +109,13 @@ def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date
     codes = sorted(c for c in listed if c in corp_by_stock)
     if limit:
         codes = codes[:limit]
-    infos = pmap(lambda code: dart.company(corp_by_stock[code]["corp_code"]), codes, workers)
-    rows = []
-    for code, info in zip(codes, infos):
+    # 이미 저장된 회사(같은 고유번호)는 다시 묻지 않음 — 백필을 이어서 돌릴 때 DART 호출 절약
+    known = {r["code"]: r for r in _read_records(store, "select code, corp_code, name, market, ksic, ksic_name, is_financial from companies")}
+    reuse = [known[c] for c in codes if c in known and known[c]["corp_code"] == corp_by_stock[c]["corp_code"]]
+    fresh = [c for c in codes if c not in {r["code"] for r in reuse}]
+    infos = pmap(lambda code: dart.company(corp_by_stock[code]["corp_code"]), fresh, workers)
+    rows = [{k: r[k] for k in ("code", "corp_code", "name", "market", "ksic", "ksic_name", "is_financial")} for r in reuse]
+    for code, info in zip(fresh, infos):
         corp = corp_by_stock[code]
         induty = info.get("induty_code")
         name = info.get("stock_name") or corp["corp_name"]
@@ -126,9 +130,18 @@ def refresh_companies(dart: DartClient, gokr: DataGoKrClient, store, as_of: date
                 "is_financial": ksic.is_financial(induty, name),
             }
         )
+    rows.sort(key=lambda r: r["code"])
     store.upsert("companies", rows, update_columns=["corp_code", "name", "market", "ksic", "ksic_name", "is_financial"])
-    log.info("companies: %d", len(rows))
+    log.info("companies: %d (새로 조회 %d)", len(rows), len(fresh))
     return rows
+
+
+def _read_records(store, sql: str, params: dict | None = None) -> list[dict]:
+    """DB에서 읽기. SQL을 못 쓰는 테스트용 저장소면 빈 목록."""
+    try:
+        return store.read_df(sql, params).to_dict("records")
+    except NotImplementedError:
+        return []
 
 
 def corp_codes_by_stock(dart: DartClient, as_of: date, wanted: set[str], windows: int = 5) -> dict[str, dict]:
@@ -219,7 +232,12 @@ def load_disclosures(dart: DartClient, store, begin: date, end: date, codes: set
 
 def attach_details(dart: DartClient, store, disclosures: list[dict], workers: int = 1) -> int:
     """재무 영향 계산용 상세(주요사항보고서·지분공시)를 붙인다. 회사·유형별로 한 번에 (동시에) 조회."""
-    need = [d for d in disclosures if not d.get("detail") and (d.get("subtype") in DETAIL_SUBTYPES or d.get("subtype") in ("major_holder", "insider"))]
+    have = {r["rcept_no"] for r in _read_records(store, "select rcept_no from disclosures where detail is not null")}
+    need = [
+        d
+        for d in disclosures
+        if not d.get("detail") and d["rcept_no"] not in have and (d.get("subtype") in DETAIL_SUBTYPES or d.get("subtype") in ("major_holder", "insider"))
+    ]
     by_key: dict[tuple[str, str], list[dict]] = {}
     for d in need:
         by_key.setdefault((d["corp_code"], d["subtype"]), []).append(d)
@@ -236,15 +254,21 @@ def attach_details(dart: DartClient, store, disclosures: list[dict], workers: in
 
     entries = list(by_key.items())
     updated = []
+    # 30일 넘게 지났는데 DART 상세 API에 없는 공시는 빈 상세({})로 표시해 다시 묻지 않음 (영향 계산은 '없음'으로 처리됨)
+    give_up_before = (today_kst() - timedelta(days=30)).isoformat()
+    found_n = 0
     for ((_, _), items), found in zip(entries, pmap(fetch, entries, workers)):
         by_no = {f["rcept_no"]: f for f in found}
         for i in items:
             if i["rcept_no"] in by_no:
                 updated.append({"rcept_no": i["rcept_no"], "detail": by_no[i["rcept_no"]]})
+                found_n += 1
+            elif str(i["rcept_dt"]) < give_up_before:
+                updated.append({"rcept_no": i["rcept_no"], "detail": {}})
     if updated:
         store.set_details(updated)
-    log.info("details attached: %d", len(updated))
-    return len(updated)
+    log.info("details attached: %d (상세 없음 표시 %d)", found_n, len(updated) - found_n)
+    return found_n
 
 
 # ── 4. 재무 ───────────────────────────────────────────────────
