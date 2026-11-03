@@ -70,6 +70,8 @@ def main() -> None:
         run(dart, gokr, naver, store, args.years, args.limit, as_of, usage, workers=s.dart_workers)
     except BudgetExceeded as e:
         log.warning(str(e))
+        # 예산이 바닥나도 지금까지 모은 데이터로 분석은 계산해 둔다 (DB만 읽음, DART 호출 없음)
+        common.recompute(store, as_of, args.years)
     finally:
         store.upsert("api_usage", usage.as_rows(as_of.isoformat()))
         log.info("API 호출 수: %s", dict(usage.counts))
