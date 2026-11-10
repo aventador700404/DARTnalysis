@@ -92,6 +92,10 @@ python -m dartpipe.jobs.backfill --years 1 --limit 20   # 시험 백필 (SUPABAS
   - 시간 대부분은 코스피 전체 공시 목록(1년 ≈ 670페이지). 1주일 지난 구간 목록·제출기한 지난 재무는 캐시(Actions cache) → 예산 초과로 멈춰도 다음 날 이어서.
   - 전체 백필(5년·825개사) ≈ DART 3만 회 → 하루 예산(18,000) 때문에 이틀에 나눠 실행.
   - 지주회사(KSIC 64992)는 금융지주·일반 지주가 같은 코드 → 이름('금융' 포함, 신한지주)으로 금융업 판정(`ksic.is_financial`).
+- ✅ **전체 백필 완료 (5년, 2026-10-10 ~ 11-10, GitHub Actions 4회):** companies 831(금융업 61) · prices_daily ~100만(2021-10 ~) · disclosures 285,092(→impacts 전부, stats 64) · 재무 827개사 · scores·valuation 827. 마지막 회차 DART 3,225회·51분.
+  - 이어하기는 **DB 기준**(공시는 마지막 공시 1주 전부터, 재무는 지난해 annual_facts가 있는 회사 건너뜀). GitHub Actions 캐시는 7일 미사용 시 삭제돼 믿지 않음.
+  - DART 예산으로 멈춰도 recompute는 실행. 빈 감사의견·배당(NaN) 처리.
+  - ⚠️ Supabase 무료 플랜은 ~1주 활동 없으면 일시정지됨(10월에 한 번 정지 → 대시보드 Restore). 평일 일일 배치가 main에서 돌아야 방지됨 — 작업 브랜치 main 병합 필요.
 - ⏸ 네이버 뉴스: 키 미등록, 당분간 제외하고 진행.
 - Claude Code 클라우드 세션: 환경 설정 Network access=Custom에 `opendart.fss.or.kr`, `apis.data.go.kr`, `openapi.naver.com` 허용 + 키는 환경 변수(`.env` 대신)로 넣음.
 - ⚠️ **클라우드 세션에서는 Supabase Postgres(5432/6543) 직접 연결 불가** (HTTPS 프록시만 통과). 백필·일일 배치는 GitHub Actions `daily-batch` 수동 실행(job=backfill, years, limit)으로 돌림.
