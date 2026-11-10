@@ -117,18 +117,30 @@ def test_backfill_end_to_end(store):
     ew = store.read_df("select kospi, kospi_ew from index_daily order by date limit 1")
     assert float(ew["kospi_ew"].iloc[0]) == 100.0
 
+    # 감사의견·배당이 비어 있는 회사가 섞여도(DataFrame에선 NaN) 분석 계산이 멈추지 않아야 함
+    store.upsert("annual_facts", [{"code": next(iter(SPEC)), "year": AS_OF.year - 2, "dividend_total": None, "audit_opinion": None}])
+    store.read_df("update annual_facts set audit_opinion = null, dividend_total = null where code = %(c)s and year = %(y)s returning code", {"c": list(SPEC)[1], "y": AS_OF.year - 1})
+
     # 다시 실행해도 중복 없이 갱신되는지 (멱등성), 처음 발견 시각은 유지
     seen_before = store.read_df("select rcept_no, first_seen_at from disclosures order by rcept_no")
     dart2 = FakeDart()
     dart2.calls = []
-    for name in ("company", "major_report", "major_holders", "insider_holdings"):
+    windows = []
+    orig_iter = dart2.iter_disclosures
+    dart2.iter_disclosures = lambda bgn, end, **kw: (windows.append(bgn), orig_iter(bgn, end, **kw))[1]
+    for name in ("company", "major_report", "major_holders", "insider_holdings", "financial_statements_any", "dividends", "audit_opinion"):
         orig = getattr(dart2, name)
         setattr(dart2, name, lambda *a, _n=name, _f=orig: (dart2.calls.append(_n), _f(*a))[1])
     backfill.run(dart2, FakeGokr(cal), None, store, years=1, limit=None, as_of=AS_OF, usage=UsageMeter())
     seen_after = store.read_df("select rcept_no, first_seen_at from disclosures order by rcept_no")
-    assert seen_before.equals(seen_after)
-    # 이어서 돌릴 때: 이미 저장된 회사 정보·공시 상세는 DART에 다시 묻지 않음 (하루 호출 한도 절약)
-    assert dart2.calls == []
+    # 이미 있던 공시는 그대로(처음 발견 시각 유지). 가짜 DART는 구간 시작일 기준으로 공시를 만들어 새 구간에서 몇 건 더 생길 수 있음
+    kept = seen_after[seen_after["rcept_no"].isin(seen_before["rcept_no"])].reset_index(drop=True)
+    assert kept.equals(seen_before)
+    # 이어서 돌릴 때: 이미 저장된 회사 정보·공시 상세·재무는 DART에 다시 묻지 않고,
+    # 공시 목록도 마지막 공시 1주 전부터만 받음 (하루 호출 한도 절약, Actions 캐시가 지워져도 동일)
+    new_disc = len(seen_after) - len(seen_before)
+    assert set(dart2.calls) <= {"major_report"} and len(dart2.calls) <= new_disc  # 상세는 새로 생긴 공시만
+    assert len(windows) == 1
     assert n("companies") == 6
 
     # Edge Function이 쓰는 호출 수 누적 함수

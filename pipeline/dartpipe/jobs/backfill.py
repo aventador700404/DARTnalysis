@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 from ..clients.dart import DartClient
 from ..clients.http import BudgetExceeded, UsageMeter
@@ -29,11 +29,22 @@ def run(dart, gokr, naver, store, years: int, limit: int | None, as_of, usage: U
     codes = {c["code"] for c in companies}
     common.load_index(gokr, store, begin, as_of + timedelta(days=1))
     common.load_prices(gokr, store, begin, as_of + timedelta(days=1), codes)
-    disclosures = common.load_disclosures(dart, store, begin, as_of, codes, workers=workers)
+    # 이어하기: DB가 곧 '받은 기록'. (GitHub Actions 캐시는 7일 안 쓰면 지워져 믿을 수 없음)
+    # 공시는 이미 기간 처음부터 받아 둔 경우 마지막 공시일 1주 전부터만 다시 받는다.
+    have = common._read_records(store, "select min(rcept_dt) as first, max(rcept_dt) as last from disclosures")
+    disc_begin = begin
+    if have and have[0]["first"] is not None and str(have[0]["first"]) <= (begin + timedelta(days=31)).isoformat():
+        disc_begin = max(begin, date.fromisoformat(str(have[0]["last"])[:10]) - timedelta(days=7))
+        log.info("공시: %s 이후만 다시 받음 (그 전은 저장됨)", disc_begin)
+    disclosures = common.load_disclosures(dart, store, disc_begin, as_of, codes, workers=workers)
     common.attach_details(dart, store, disclosures, workers=workers)
 
     # 재무: 3년 성장률 + TTM 계산을 위해 (years + 1)년치. 회사별로 동시에 (DB 쓰기는 store가 순서대로 처리)
+    # 지난해 연간 정보(annual_facts)까지 저장된 회사는 재무도 끝난 회사 → 건너뜀 (새 분기는 일일 배치가 채움)
     fin_years = list(range(as_of.year - years - 1, as_of.year + 1))
+    finished = {r["code"] for r in common._read_records(store, "select code from annual_facts where year = %(y)s", {"y": as_of.year - 1})}
+    todo = [c for c in companies if c["code"] not in finished]
+    log.info("재무: %d개사 남음 (완료 %d)", len(todo), len(companies) - len(todo))
     done = [0]
 
     def load_company(c: dict) -> None:
@@ -41,9 +52,9 @@ def run(dart, gokr, naver, store, years: int, limit: int | None, as_of, usage: U
         common.load_annual_facts(dart, store, c["corp_code"], c["code"], as_of.year - 1)
         done[0] += 1
         if done[0] % 50 == 0:
-            log.info("재무 진행: %d / %d (DART %d회)", done[0], len(companies), usage.counts["dart"])
+            log.info("재무 진행: %d / %d (DART %d회)", done[0], len(todo), usage.counts["dart"])
 
-    common.pmap(load_company, companies, workers)
+    common.pmap(load_company, todo, workers)
 
     if naver is not None:
         recent = [d for d in disclosures if d["rcept_dt"] >= (as_of - timedelta(days=30)).isoformat()]

@@ -355,9 +355,12 @@ def universe_from_db(store, since: date, as_of: date) -> Universe:
     for code, g in quarters.items():
         quarters[code] = g.astype({c: float for c in num_cols if c in g})
     annual = q["annual"]
-    dividends = {r["code"]: float(r["dividend_total"]) for r in annual.to_dict("records") if r["dividend_total"] is not None}
+    # 빈 값은 DataFrame에서 NaN(float)으로 올 수 있어 None만 거르면 안 됨
+    dividends = {r["code"]: float(r["dividend_total"]) for r in annual.to_dict("records") if pd.notna(r["dividend_total"])}
     audit_ok = {
-        r["code"]: ("적정" in r["audit_opinion"] and "부적정" not in r["audit_opinion"]) for r in annual.to_dict("records") if r["audit_opinion"]
+        r["code"]: ("적정" in r["audit_opinion"] and "부적정" not in r["audit_opinion"])
+        for r in annual.to_dict("records")
+        if isinstance(r["audit_opinion"], str) and r["audit_opinion"]
     }
     disc = q["disclosures"].to_dict("records")
     for d in disc:
